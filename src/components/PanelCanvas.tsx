@@ -775,12 +775,47 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
           x={boxX + numSupplyPhases * DIN_PITCH + 12}
           y={boxY + 21.5}
           textAnchor="middle"
-          fontSize={8}
+          fontSize={config.groundingSystem === 'TN-C' || config.groundingSystem === 'TN-C-S' ? 7 : 8}
           fontWeight="bold"
           fill="#38bdf8"
         >
-          N
+          {config.groundingSystem === 'TN-C' || config.groundingSystem === 'TN-C-S' ? 'PEN' : 'N'}
         </text>
+
+        {/* NBR 5410 Grounding Scheme Badge */}
+        <g transform={`translate(${boxX + boxW + 8}, ${boxY})`}>
+          <rect
+            x={0}
+            y={0}
+            width={72}
+            height={26}
+            rx={5}
+            fill="#022c22"
+            stroke="#059669"
+            strokeWidth={1.2}
+          />
+          <text
+            x={36}
+            y={10}
+            textAnchor="middle"
+            fontSize={6.5}
+            fontWeight="bold"
+            fill="#34d399"
+          >
+            ATERRAMENTO
+          </text>
+          <text
+            x={36}
+            y={21}
+            textAnchor="middle"
+            fontSize={8.5}
+            fontWeight="bold"
+            fill="#f8fafc"
+          >
+            {config.groundingSystem || 'TN-S'}
+          </text>
+          <title>{`Esquema de Aterramento NBR 5410: ${config.groundingSystem || 'TN-S'}`}</title>
+        </g>
       </g>
     );
   };
@@ -1548,11 +1583,11 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
                   x={136}
                   y={84}
                   textAnchor="middle"
-                  fontSize={9}
+                  fontSize={config.groundingSystem === 'TN-C' ? 8.5 : 9}
                   fontWeight="bold"
                   fill="#0369a1"
                 >
-                  NEUTRO
+                  {config.groundingSystem === 'TN-C' ? 'PEN' : 'NEUTRO'}
                 </text>
                 {Array.from({ length: 16 }).map((_, i) => (
                   <circle
@@ -1584,11 +1619,19 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
                   x={864}
                   y={84}
                   textAnchor="middle"
-                  fontSize={9}
+                  fontSize={8}
                   fontWeight="bold"
                   fill="#15803d"
                 >
-                  TERRA
+                  {config.groundingSystem === 'TN-C'
+                    ? 'PEN (PE)'
+                    : config.groundingSystem === 'TN-C-S'
+                    ? 'PE (PEN)'
+                    : config.groundingSystem === 'TT'
+                    ? 'TERRA TT'
+                    : config.groundingSystem === 'IT'
+                    ? 'TERRA IT'
+                    : 'TERRA'}
                 </text>
                 {Array.from({ length: 16 }).map((_, i) => (
                   <circle
@@ -1904,8 +1947,16 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
                       stroke="#334155"
                       strokeWidth={1.5}
                     />
-                    <text x={125} y={64} fontSize={9.5} fontWeight="bold" fill="#15803d">
-                      TERRA
+                    <text x={115} y={64} fontSize={8.5} fontWeight="bold" fill="#15803d">
+                      {config.groundingSystem === 'TN-C'
+                        ? 'PEN'
+                        : config.groundingSystem === 'TN-C-S'
+                        ? 'TERRA (PEN LINK)'
+                        : config.groundingSystem === 'TT'
+                        ? 'TERRA LOCAL (TT)'
+                        : config.groundingSystem === 'IT'
+                        ? 'TERRA (IT)'
+                        : 'TERRA (PE)'}
                     </text>
                     <rect
                       x={185}
@@ -1955,11 +2006,11 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
                     <text
                       x={115}
                       y={bottomBarY + 4}
-                      fontSize={9.5}
+                      fontSize={8.5}
                       fontWeight="bold"
                       fill="#0284c7"
                     >
-                      NEUTRO
+                      {config.groundingSystem === 'TN-C' ? 'BARRA PEN' : 'NEUTRO (N)'}
                     </text>
                     <rect
                       x={185}

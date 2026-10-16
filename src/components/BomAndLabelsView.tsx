@@ -46,10 +46,15 @@ export const BomAndLabelsView: React.FC<BomAndLabelsViewProps> = ({
       {/* Top Action Bar (hidden when printing) */}
       <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-900 p-4 rounded-xl border border-slate-800 print:hidden">
         <div>
-          <h2 className="text-lg font-bold text-slate-100">
-            Lista de Compras (BOM) & Etiquetas para Impressão
-          </h2>
-          <p className="text-xs text-slate-400">
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-lg font-bold text-slate-100">
+              Lista de Compras (BOM) & Etiquetas para Impressão
+            </h2>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+              Aterramento: {config.groundingSystem || 'TN-S'}
+            </span>
+          </div>
+          <p className="text-xs text-slate-400 mt-0.5">
             Exporte a lista completa de materiais para orçamento ou imprima as etiquetas padrão DIN (17,5mm por módulo) e legenda da porta do QDC.
           </p>
         </div>

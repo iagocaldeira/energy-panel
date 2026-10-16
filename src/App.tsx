@@ -43,7 +43,12 @@ export function App() {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        return {
+          ...PANEL_PRESETS.fishbone,
+          ...parsed,
+          groundingSystem: parsed.groundingSystem || 'TN-S',
+        };
       }
     } catch {
       // ignore storage errors
@@ -729,6 +734,9 @@ export function App() {
           voltageSystem: ['127_220', '220_380'].includes(parsed.voltageSystem)
             ? parsed.voltageSystem
             : '127_220',
+          groundingSystem: ['TN-S', 'TN-C-S', 'TN-C', 'TT', 'IT'].includes(parsed.groundingSystem)
+            ? parsed.groundingSystem
+            : 'TN-S',
           fishboneSlotsPerSide:
             typeof parsed.fishboneSlotsPerSide === 'number' && parsed.fishboneSlotsPerSide >= 6
               ? parsed.fishboneSlotsPerSide

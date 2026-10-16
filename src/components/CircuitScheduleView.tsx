@@ -50,10 +50,15 @@ export const CircuitScheduleView: React.FC<CircuitScheduleViewProps> = ({
       {/* Header & Bulk Actions */}
       <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-900 p-4 rounded-xl border border-slate-800">
         <div>
-          <h2 className="text-lg font-bold text-slate-100">
-            Quadro de Cargas e Dimensionamento NBR 5410
-          </h2>
-          <p className="text-xs text-slate-400">
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-lg font-bold text-slate-100">
+              Quadro de Cargas e Dimensionamento NBR 5410
+            </h2>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+              Aterramento: {config.groundingSystem || 'TN-S'}
+            </span>
+          </div>
+          <p className="text-xs text-slate-400 mt-0.5">
             Edite potências, tensões, fases e bitolas diretamente na planilha — o diagrama do QDC é atualizado em tempo real.
           </p>
         </div>

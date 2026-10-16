@@ -2,6 +2,7 @@ export type LayoutTopology = 'fishbone' | 'horizontal';
 
 export type SupplyType = 'mono' | 'bi' | 'tri'; // 1-phase, 2-phase, 3-phase
 export type VoltageSystem = '127_220' | '220_380';
+export type GroundingSystem = 'TN-S' | 'TN-C-S' | 'TN-C' | 'TT' | 'IT';
 
 export type ComponentCategory =
   | 'main_breaker'
@@ -79,6 +80,7 @@ export interface PanelConfig {
   topology: LayoutTopology;
   supplyType: SupplyType;
   voltageSystem: VoltageSystem;
+  groundingSystem: GroundingSystem;
   fishboneSlotsPerSide: number;
   horizontalRows: number;
   modulesPerRow: number;

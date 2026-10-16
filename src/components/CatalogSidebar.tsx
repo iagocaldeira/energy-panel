@@ -399,6 +399,56 @@ export const CatalogSidebar: React.FC<CatalogSidebarProps> = ({
           </div>
         </div>
 
+        {/* Grounding System (NBR 5410) */}
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-[11px] text-slate-400">Esquema de Aterramento</label>
+            <span className="text-[10px] font-semibold text-amber-500/90">NBR 5410</span>
+          </div>
+          <select
+            value={config.groundingSystem || 'TN-S'}
+            onChange={(e) =>
+              onUpdateConfig({
+                groundingSystem: e.target.value as PanelConfig['groundingSystem'],
+              })
+            }
+            className="w-full bg-slate-950 border border-slate-800 rounded-md px-2 py-1.5 text-xs text-slate-200"
+          >
+            <option value="TN-S">TN-S — Neutro e Terra Separados</option>
+            <option value="TN-C-S">TN-C-S — PEN Separado no QDC (N + PE)</option>
+            <option value="TN-C">TN-C — PEN Combinado (Sem IDR)</option>
+            <option value="TT">TT — Terra Independente (IDR Obrigatório)</option>
+            <option value="IT">IT — Neutro Isolado / Impedante</option>
+          </select>
+          <div className="mt-1.5 p-2 rounded bg-slate-950/80 border border-slate-800/80 text-[10.5px] leading-relaxed text-slate-400">
+            {(!config.groundingSystem || config.groundingSystem === 'TN-S') && (
+              <span>
+                <strong className="text-emerald-400">TN-S:</strong> Condutores Neutro (N) e Proteção (PE) distintos em toda a instalação. Padrão de máxima segurança para IDR e DPS.
+              </span>
+            )}
+            {config.groundingSystem === 'TN-C-S' && (
+              <span>
+                <strong className="text-sky-400">TN-C-S:</strong> PEN da concessionária entra no QDC e se divide no barramento de equipotencialização antes do IDR. A jusante, N e PE não se reconectam.
+              </span>
+            )}
+            {config.groundingSystem === 'TN-C' && (
+              <span>
+                <strong className="text-amber-400">TN-C:</strong> PEN único em toda a instalação. <span className="text-rose-400 font-semibold">NBR 5410 proíbe uso de IDR</span> neste esquema (o PEN desarmará o IDR).
+              </span>
+            )}
+            {config.groundingSystem === 'TT' && (
+              <span>
+                <strong className="text-amber-400">TT:</strong> Eletrodo de terra local independente do neutro da rede. <span className="text-emerald-400 font-semibold">IDR é OBRIGATÓRIO</span> em todos os circuitos para seccionamento.
+              </span>
+            )}
+            {config.groundingSystem === 'IT' && (
+              <span>
+                <strong className="text-purple-400">IT:</strong> Neutro isolado ou aterrado por alta impedância. Massas aterradas localmente. Exige DSI para continuidade de serviço.
+              </span>
+            )}
+          </div>
+        </div>
+
         {/* Panel Dimension / Sizing Controls */}
         {config.topology === 'fishbone' ? (
           <div>
