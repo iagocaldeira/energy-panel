@@ -27,8 +27,8 @@ describe('Global Mobile Shell & Navigation', () => {
   it('renders floating drawer toggle buttons on canvas view', () => {
     const markup = renderToStaticMarkup(<App />);
 
-    expect(markup).toContain('title="Abrir catálogo de componentes"');
-    expect(markup).toContain('title="Abrir propriedades e análise"');
+    expect(markup).toContain('title="Adicionar componentes do catálogo"');
+    expect(markup).toContain('title="Ver análise e propriedades gerais"');
   });
 
   it('renders close button in CatalogSidebar when onClose is provided', () => {

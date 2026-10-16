@@ -68,29 +68,31 @@ describe('PanelCanvas - Mobile Responsiveness & Touch Support', () => {
       />
     );
 
-    // Floating action bar container for mobile (md:hidden fixed bottom-20)
-    expect(markup).toContain('md:hidden');
-    expect(markup).toContain('fixed bottom-20');
+    // Floating action bar container for mobile (lg:hidden absolute bottom-3)
+    expect(markup).toContain('lg:hidden');
+    expect(markup).toContain('absolute bottom-3');
 
     // Quick action buttons
     expect(markup).toContain(selectedMod.isOn ? 'Desligar disjuntor' : 'Ligar disjuntor');
-    expect(markup).toContain(selectedMod.isOn ? 'LIGADO' : 'DESLIGADO');
     expect(markup).toContain('Mover para esquerda');
     expect(markup).toContain('Mover para direita');
     expect(markup).toContain('Excluir módulo');
     expect(markup).toContain('Desmarcar seleção');
   });
 
-  it('does not render mobile floating action bar when selectedModuleId is null', () => {
+  it('renders general mobile dock when selectedModuleId is null', () => {
     const config: PanelConfig = { ...PANEL_PRESETS.fishbone };
     const markup = renderToStaticMarkup(
       <PanelCanvas
         {...defaultProps}
         config={config}
         selectedModuleId={null}
+        onOpenCatalog={vi.fn()}
+        onOpenInspector={vi.fn()}
       />
     );
 
-    expect(markup).not.toContain('fixed bottom-20');
+    expect(markup).toContain('+ Catálogo');
+    expect(markup).toContain('Análise Geral');
   });
 });

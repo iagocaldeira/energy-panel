@@ -4,6 +4,8 @@ import {
   ArrowRight,
   Maximize2,
   Power,
+  Settings2,
+  Sliders,
   Trash2,
   X,
 } from 'lucide-react';
@@ -29,6 +31,8 @@ interface PanelCanvasProps {
   onMoveModule: (moduleId: string, targetRail: RailId, targetSlot: number) => void;
   onDropCatalogItem: (catalogKey: string, targetRail: RailId, targetSlot: number) => void;
   onDeleteModule?: (id: string) => void;
+  onOpenCatalog?: () => void;
+  onOpenInspector?: () => void;
   wireToolActive: boolean;
   activeWireType: WireType;
   activeWireGauge: number;
@@ -116,6 +120,8 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
   onMoveModule,
   onDropCatalogItem,
   onDeleteModule,
+  onOpenCatalog,
+  onOpenInspector,
   wireToolActive,
   activeWireType,
   onAddWire,
@@ -3115,88 +3121,129 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
         </svg>
       </div>
 
-      {/* Floating Quick Action Bar for Mobile when a module is selected */}
-      {selectedModule && (
-        <div
-          className="fixed bottom-20 left-1/2 -translate-x-1/2 z-30 md:hidden flex items-center gap-1.5 p-2 px-3 bg-slate-900/95 border border-slate-700/80 rounded-2xl shadow-2xl backdrop-blur max-w-[95vw] text-xs"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Module Information */}
-          <div className="flex flex-col pr-1.5 border-r border-slate-700/60 max-w-[100px] shrink-0">
-            <span className="font-bold text-slate-200 truncate">
-              {selectedModule.circuitNumber ? `C${selectedModule.circuitNumber}` : selectedModule.name}
-            </span>
-            <span className="text-[10px] text-slate-400 truncate">
-              {selectedModule.ratingAmps ? `${selectedModule.ratingAmps}A` : `${selectedModule.poles}P`} • {selectedModule.phases || '1P'}
-            </span>
-          </div>
-
-          {/* Ligar/Desligar disjuntor (com indicador de status Ligado/Desligado) */}
-          <button
-            type="button"
-            onClick={() => onToggleModulePower(selectedModule.id)}
-            className={`h-9 px-2.5 rounded-xl flex items-center gap-1.5 font-bold text-xs transition active:scale-95 shrink-0 ${
-              selectedModule.isOn
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
-            }`}
-            title={selectedModule.isOn ? 'Desligar disjuntor' : 'Ligar disjuntor'}
-            aria-label={selectedModule.isOn ? 'Desligar disjuntor' : 'Ligar disjuntor'}
+      {/* Unified Mobile Floating Dock (< lg / mobile & tablet) */}
+      <div className="lg:hidden absolute bottom-3 left-1/2 -translate-x-1/2 z-30 pointer-events-auto flex items-center justify-center max-w-[96vw]">
+        {selectedModule ? (
+          <div
+            className="flex items-center gap-1.5 p-2 px-2.5 bg-slate-900/95 border border-slate-700/80 rounded-2xl shadow-2xl backdrop-blur text-xs"
+            onClick={(e) => e.stopPropagation()}
           >
-            <Power className="w-3.5 h-3.5" />
-            <span>{selectedModule.isOn ? 'LIGADO' : 'DESLIGADO'}</span>
-          </button>
+            {/* Module Information */}
+            <div className="flex flex-col pr-1.5 border-r border-slate-700/60 max-w-[85px] shrink-0">
+              <span className="font-bold text-slate-200 truncate">
+                {selectedModule.circuitNumber ? `C${selectedModule.circuitNumber}` : selectedModule.name}
+              </span>
+              <span className="text-[10px] text-slate-400 truncate">
+                {selectedModule.ratingAmps ? `${selectedModule.ratingAmps}A` : `${selectedModule.poles}P`} • {selectedModule.phases || '1P'}
+              </span>
+            </div>
 
-          {/* Mover para esquerda (nudge -1) */}
-          <button
-            type="button"
-            onClick={() => handleNudgeModule(-1)}
-            className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 flex items-center justify-center shrink-0 border border-slate-700 active:scale-95"
-            title="Mover para esquerda"
-            aria-label="Mover para esquerda"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-
-          {/* Mover para direita (nudge +1) */}
-          <button
-            type="button"
-            onClick={() => handleNudgeModule(1)}
-            className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 flex items-center justify-center shrink-0 border border-slate-700 active:scale-95"
-            title="Mover para direita"
-            aria-label="Mover para direita"
-          >
-            <ArrowRight className="w-4 h-4" />
-          </button>
-
-          {/* Excluir módulo (se onDeleteModule estiver presente) */}
-          {onDeleteModule && (
+            {/* Ligar/Desligar disjuntor */}
             <button
               type="button"
-              onClick={() => {
-                onDeleteModule(selectedModule.id);
-                onSelectModule(null);
-              }}
-              className="w-9 h-9 rounded-xl bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 flex items-center justify-center shrink-0 border border-rose-500/30 active:scale-95"
-              title="Excluir módulo"
-              aria-label="Excluir módulo"
+              onClick={() => onToggleModulePower(selectedModule.id)}
+              className={`h-9 px-2.5 rounded-xl flex items-center gap-1 font-bold text-xs transition active:scale-95 shrink-0 ${
+                selectedModule.isOn
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                  : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+              }`}
+              title={selectedModule.isOn ? 'Desligar disjuntor' : 'Ligar disjuntor'}
+              aria-label={selectedModule.isOn ? 'Desligar disjuntor' : 'Ligar disjuntor'}
             >
-              <Trash2 className="w-4 h-4" />
+              <Power className="w-3.5 h-3.5" />
+              <span className="hidden xs:inline">{selectedModule.isOn ? 'LIGADO' : 'DESL.'}</span>
             </button>
-          )}
 
-          {/* Desmarcar seleção */}
-          <button
-            type="button"
-            onClick={() => onSelectModule(null)}
-            className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-400 hover:text-slate-200 flex items-center justify-center shrink-0 border border-slate-700 active:scale-95"
-            title="Desmarcar seleção"
-            aria-label="Desmarcar seleção"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
+            {/* Mover para esquerda (nudge -1) */}
+            <button
+              type="button"
+              onClick={() => handleNudgeModule(-1)}
+              className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 flex items-center justify-center shrink-0 border border-slate-700 active:scale-95"
+              title="Mover para esquerda"
+              aria-label="Mover para esquerda"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+
+            {/* Mover para direita (nudge +1) */}
+            <button
+              type="button"
+              onClick={() => handleNudgeModule(1)}
+              className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 flex items-center justify-center shrink-0 border border-slate-700 active:scale-95"
+              title="Mover para direita"
+              aria-label="Mover para direita"
+            >
+              <ArrowRight className="w-4 h-4" />
+            </button>
+
+            {/* Abrir Propriedades (Inspector drawer on demand) */}
+            {onOpenInspector && (
+              <button
+                type="button"
+                onClick={onOpenInspector}
+                className="h-9 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 flex items-center gap-1 font-medium active:scale-95 shrink-0"
+                title="Abrir propriedades completas"
+                aria-label="Propriedades"
+              >
+                <Settings2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Propriedades</span>
+              </button>
+            )}
+
+            {/* Excluir módulo */}
+            {onDeleteModule && (
+              <button
+                type="button"
+                onClick={() => {
+                  onDeleteModule(selectedModule.id);
+                  onSelectModule(null);
+                }}
+                className="w-9 h-9 rounded-xl bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 flex items-center justify-center shrink-0 border border-rose-500/30 active:scale-95"
+                title="Excluir módulo"
+                aria-label="Excluir módulo"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
+
+            {/* Desmarcar seleção */}
+            <button
+              type="button"
+              onClick={() => onSelectModule(null)}
+              className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-400 hover:text-slate-200 flex items-center justify-center shrink-0 border border-slate-700 active:scale-95"
+              title="Desmarcar seleção"
+              aria-label="Desmarcar seleção"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2.5 p-1.5 px-3 bg-slate-900/95 border border-slate-700/80 rounded-2xl shadow-2xl backdrop-blur text-xs">
+            {onOpenCatalog && (
+              <button
+                type="button"
+                onClick={onOpenCatalog}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold active:scale-95 transition shadow"
+                title="Adicionar componentes do catálogo"
+              >
+                <Sliders className="w-4 h-4" />
+                <span>+ Catálogo</span>
+              </button>
+            )}
+            {onOpenInspector && (
+              <button
+                type="button"
+                onClick={onOpenInspector}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-medium active:scale-95 transition"
+                title="Ver análise e propriedades gerais"
+              >
+                <Settings2 className="w-4 h-4 text-amber-400" />
+                <span>Análise Geral</span>
+              </button>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

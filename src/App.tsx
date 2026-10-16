@@ -86,9 +86,6 @@ export function App() {
 
   const handleSelectModule = (id: string | null) => {
     setSelectedModuleId(id);
-    if (id && typeof window !== 'undefined' && window.innerWidth < 1024) {
-      setMobileInspectorOpen(true);
-    }
   };
 
   const svgRef = useRef<SVGSVGElement>(null);
@@ -551,6 +548,7 @@ export function App() {
       next.wires = syncWires(next, prev);
       return next;
     });
+    setMobileCatalogOpen(false);
   };
 
   // Update a specific module
@@ -823,7 +821,7 @@ export function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 relative">
+    <div className="flex flex-col h-[100dvh] w-full max-w-full overflow-hidden bg-slate-950 text-slate-100 relative">
       {/* Top Application Header */}
       <header className="h-14 px-3 sm:px-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between gap-2 sm:gap-4 shrink-0 print:hidden relative z-30">
         {/* Brand & Project Title */}
@@ -1086,30 +1084,6 @@ export function App() {
 
             {/* Canvas Viewport (takes full width in mobile < 1024px) */}
             <div className="flex-1 w-full overflow-hidden relative flex flex-col">
-              {/* Floating Mobile Controls to open Drawers (< 1024px) */}
-              <div className="lg:hidden absolute bottom-3 left-3 right-3 flex items-center justify-between pointer-events-none z-30">
-                <button
-                  onClick={() => setMobileCatalogOpen(true)}
-                  className="pointer-events-auto flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-900/95 hover:bg-slate-800 text-slate-100 border border-slate-700/90 shadow-xl backdrop-blur text-xs font-semibold active:scale-95 transition"
-                  title="Abrir catálogo de componentes"
-                >
-                  <Sliders className="w-4 h-4 text-amber-400" />
-                  <span>Catálogo</span>
-                </button>
-
-                <button
-                  onClick={() => setMobileInspectorOpen(true)}
-                  className="pointer-events-auto flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-900/95 hover:bg-slate-800 text-slate-100 border border-slate-700/90 shadow-xl backdrop-blur text-xs font-semibold active:scale-95 transition relative"
-                  title="Abrir propriedades e análise"
-                >
-                  <Settings2 className="w-4 h-4 text-amber-400" />
-                  <span>Propriedades</span>
-                  {selectedModule && (
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400 ring-2 ring-slate-900 absolute -top-1 -right-1 animate-pulse" />
-                  )}
-                </button>
-              </div>
-
               <PanelCanvas
                 config={config}
                 selectedModuleId={selectedModuleId}
@@ -1118,6 +1092,8 @@ export function App() {
                 onMoveModule={handleMoveModule}
                 onDropCatalogItem={handleDropCatalogItem}
                 onDeleteModule={handleDeleteModule}
+                onOpenCatalog={() => setMobileCatalogOpen(true)}
+                onOpenInspector={() => setMobileInspectorOpen(true)}
                 wireToolActive={wireToolActive}
                 activeWireType={activeWireType}
                 activeWireGauge={activeWireGauge}
@@ -1228,7 +1204,7 @@ export function App() {
       {/* Mobile Bottom Navigation Bar (< md / 768px) */}
       <nav
         aria-label="Navegação Principal"
-        className="fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur border-t border-slate-800 flex justify-around py-1.5 md:hidden px-2 shadow-2xl"
+        className="fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur border-t border-slate-800 grid grid-cols-4 py-1.5 md:hidden px-1 shadow-2xl"
       >
         <button
           onClick={() => setActiveTab('canvas')}
