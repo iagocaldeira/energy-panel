@@ -6,6 +6,7 @@ import {
   Printer,
   RotateCcw,
   Trash2,
+  Workflow,
   Zap,
 } from 'lucide-react';
 import {
@@ -20,12 +21,17 @@ import {
 import { PANEL_PRESETS } from './data/presets';
 import {
   calculateCircuitCurrent,
+  checkDrRequirement,
   generateAutomaticWires,
+  getDefaultPowerFactor,
   getRecommendedBreakerRating,
   getRecommendedWireGauge,
+  isLoadCircuit,
   PhaseBalancePreview,
+  BreakerRecalculatePreview,
   placeModuleWithoutOverlap,
   previewPhaseBalanceChanges,
+  previewBreakerRecalculation,
 } from './utils/electrical';
 import { CatalogSidebar, CATALOG_ITEMS } from './components/CatalogSidebar';
 import { PanelCanvas } from './components/PanelCanvas';
@@ -33,8 +39,10 @@ import { InspectorPanel } from './components/InspectorPanel';
 import { CircuitScheduleView } from './components/CircuitScheduleView';
 import { BomAndLabelsView } from './components/BomAndLabelsView';
 import { PhaseBalanceModal } from './components/PhaseBalanceModal';
+import { BreakerRecalculateModal } from './components/BreakerRecalculateModal';
+import { SingleLineDiagramView } from './components/SingleLineDiagramView';
 
-type ActiveTab = 'canvas' | 'schedule' | 'bom';
+type ActiveTab = 'canvas' | 'unifilar' | 'schedule' | 'bom';
 
 const STORAGE_KEY = 'qdc_studio_saved_config_v3';
 
@@ -63,6 +71,8 @@ export function App() {
   const [activeWireGauge, setActiveWireGauge] = useState<number>(2.5);
   const [balancePreview, setBalancePreview] =
     useState<PhaseBalancePreview | null>(null);
+  const [breakerPreview, setBreakerPreview] =
+    useState<BreakerRecalculatePreview | null>(null);
 
   const svgRef = useRef<SVGSVGElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -137,7 +147,7 @@ export function App() {
         let rightPos = 0;
         let topPos = 0;
         next.modules = prev.modules.map((m) => {
-          if (m.category !== 'breaker') {
+          if (m.category !== 'breaker' && m.category !== 'rcbo') {
             const pos = topPos;
             topPos += m.poles;
             if (m.category === 'main_breaker') topPos += 1; // 1-slot gap after main breaker
@@ -158,7 +168,7 @@ export function App() {
         let r2Pos = 0;
         let r3Pos = 0;
         next.modules = prev.modules.map((m) => {
-          if (m.category !== 'breaker') {
+          if (m.category !== 'breaker' && m.category !== 'rcbo') {
             const pos = r1Pos;
             r1Pos += m.poles;
             if (m.category === 'main_breaker') r1Pos += 1;
@@ -215,7 +225,7 @@ export function App() {
             }
             return m;
           }
-          if (m.category === 'breaker') {
+          if (m.category === 'breaker' || m.category === 'rcbo') {
             if (newSupply === 'mono') {
               return {
                 ...m,
@@ -249,7 +259,7 @@ export function App() {
       if (partial.voltageSystem && partial.voltageSystem !== prev.voltageSystem) {
         const is220_380 = partial.voltageSystem === '220_380';
         next.modules = next.modules.map((m) => {
-          if (m.category === 'breaker') {
+          if (m.category === 'breaker' || m.category === 'rcbo') {
             const voltage = m.poles === 1 ? (is220_380 ? 220 : 127) : (is220_380 ? 380 : 220);
             return { ...m, voltage };
           }
@@ -337,11 +347,12 @@ export function App() {
     const tpl = CATALOG_ITEMS.find((c) => c.key === catalogKey);
     if (!tpl) return null;
 
+    const isCircuit = isLoadCircuit(tpl as any);
     const maxCkt = existingModules
-      .filter((m) => m.category === 'breaker')
+      .filter(isLoadCircuit)
       .reduce((max, m) => Math.max(max, m.circuitNumber || 0), 0);
 
-    const nextCktNumber = tpl.category === 'breaker' ? maxCkt + 1 : undefined;
+    const nextCktNumber = isCircuit ? maxCkt + 1 : undefined;
 
     let defaultPhases: PhaseAssignment;
     if (tpl.category === 'dps') {
@@ -378,20 +389,23 @@ export function App() {
     const defaultVolt: 127 | 220 | 380 =
       tpl.poles === 1 ? (is220_380 ? 220 : 127) : (is220_380 ? 380 : 220);
 
+    // Link breaker to first sectoral IDR if available
+    const firstIdr = existingModules.find((m) => m.category === 'idr');
+
     return {
       id: `mod-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       category: tpl.category,
       name:
-        tpl.category === 'breaker'
+        isCircuit
           ? `${tpl.defaultName} ${nextCktNumber}`
           : tpl.defaultName,
       circuitNumber: nextCktNumber,
-      room: tpl.category === 'breaker' ? 'Geral' : undefined,
+      room: isCircuit ? 'Geral' : undefined,
       circuitType: tpl.circuitType,
       poles: tpl.poles,
       ratingAmps: tpl.ratingAmps,
       curve: tpl.curve || 'C',
-      sensitivityMa: tpl.category === 'idr' ? 30 : undefined,
+      sensitivityMa: tpl.category === 'idr' || tpl.category === 'rcbo' ? (tpl.sensitivityMa || 30) : undefined,
       dpsKa: tpl.category === 'dps' ? 20 : undefined,
       dpsVoltage: tpl.category === 'dps' ? 275 : undefined,
       railId: targetRail,
@@ -401,7 +415,14 @@ export function App() {
       powerWatts: tpl.powerWatts,
       wireGaugeMm2: tpl.wireGaugeMm2,
       isOn: true,
-      drProtected: tpl.category === 'breaker',
+      drProtected: tpl.category === 'rcbo' ? true : tpl.category === 'breaker',
+      idrId: tpl.category === 'breaker' ? firstIdr?.id : undefined,
+      lengthMeters: 15,
+      powerFactor:
+        tpl.category === 'breaker' || tpl.category === 'rcbo'
+          ? getDefaultPowerFactor(tpl.defaultName, tpl.circuitType)
+          : undefined,
+      groupingFactor: 1.0,
     };
   };
 
@@ -446,8 +467,9 @@ export function App() {
 
     setConfig((prev) => {
       let candidateRails: RailId[] = [];
+      const isCircuit = tpl.category === 'breaker' || tpl.category === 'rcbo';
       if (prev.topology === 'fishbone') {
-        if (tpl.category === 'breaker') {
+        if (isCircuit) {
           candidateRails = tpl.poles >= 2
             ? ['right_rail', 'left_rail']
             : ['left_rail', 'right_rail'];
@@ -455,7 +477,7 @@ export function App() {
           candidateRails = ['top_main'];
         }
       } else {
-        if (tpl.category === 'breaker') {
+        if (isCircuit) {
           candidateRails = (['row_2', 'row_3', 'row_4'] as RailId[]).slice(
             0,
             prev.horizontalRows - 1
@@ -579,18 +601,18 @@ export function App() {
         alert('Não há espaço no trilho para duplicar este componente.');
         return prev;
       }
+      const isCircuit = isLoadCircuit(orig);
       const maxCkt = prev.modules
-        .filter((m) => m.category === 'breaker')
+        .filter(isLoadCircuit)
         .reduce((max, m) => Math.max(max, m.circuitNumber || 0), 0);
 
       const copy: PanelModule = {
         ...orig,
         id: `mod-${Date.now()}`,
-        name:
-          orig.category === 'breaker'
-            ? `${orig.name} ${maxCkt + 1}`.trim()
-            : orig.name,
-        circuitNumber: orig.category === 'breaker' ? maxCkt + 1 : undefined,
+        name: isCircuit
+          ? `${orig.name} ${maxCkt + 1}`.trim()
+          : orig.name,
+        circuitNumber: isCircuit ? maxCkt + 1 : undefined,
         position: slot,
       };
       const placed = placeModuleWithoutOverlap(
@@ -643,22 +665,52 @@ export function App() {
     setBalancePreview(null);
   };
 
-  // Auto-dimension all circuits per NBR 5410
+  // Open preview modal for recalculating breaker ratings and wire gauges per NBR 5410
+  const handleOpenBreakerRecalculatePreview = () => {
+    const preview = previewBreakerRecalculation(config);
+    setBreakerPreview(preview);
+  };
+
+  // Confirm breaker recalculation changes from modal
+  const handleConfirmBreakerRecalculate = () => {
+    if (!breakerPreview) return;
+    setConfig((prev) => {
+      const next = { ...prev, modules: breakerPreview.proposedModules };
+      const hadAutoWires = prev.wires.some((w) => w.isAutoGenerated);
+      if (hadAutoWires) {
+        next.wires = mergeAutoWithManualWires(next);
+      }
+      return next;
+    });
+    setBreakerPreview(null);
+  };
+
+  // Auto-dimension all circuits per NBR 5410 (supports breakers and RCBOs)
   const handleAutoDimensionAll = () => {
     setConfig((prev) => {
       const updated = prev.modules.map((m) => {
-        if (m.category !== 'breaker') return m;
+        if (!isLoadCircuit(m)) return m;
         const current = calculateCircuitCurrent(m);
         const ratingAmps = getRecommendedBreakerRating(current, m.circuitType);
         const wireGaugeMm2 = getRecommendedWireGauge(
           current,
           ratingAmps,
           m.circuitType,
-          m.poles
+          m.poles,
+          {
+            lengthMeters: m.lengthMeters,
+            voltage: m.voltage,
+            groupingFactor: m.groupingFactor,
+          }
         );
         return { ...m, ratingAmps, wireGaugeMm2 };
       });
-      return { ...prev, modules: updated };
+      const next = { ...prev, modules: updated };
+      const hadAutoWires = prev.wires.some((w) => w.isAutoGenerated);
+      if (hadAutoWires) {
+        next.wires = mergeAutoWithManualWires(next);
+      }
+      return next;
     });
   };
 
@@ -737,6 +789,7 @@ export function App() {
           groundingSystem: ['TN-S', 'TN-C-S', 'TN-C', 'TT', 'IT'].includes(parsed.groundingSystem)
             ? parsed.groundingSystem
             : 'TN-S',
+          penGroundedAtPanel: parsed.penGroundedAtPanel !== false,
           fishboneSlotsPerSide:
             typeof parsed.fishboneSlotsPerSide === 'number' && parsed.fishboneSlotsPerSide >= 6
               ? parsed.fishboneSlotsPerSide
@@ -840,6 +893,17 @@ export function App() {
           >
             <LayoutGrid className="w-3.5 h-3.5" />
             Montagem do Quadro
+          </button>
+          <button
+            onClick={() => setActiveTab('unifilar')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition ${
+              activeTab === 'unifilar'
+                ? 'bg-amber-500 text-slate-950 font-bold shadow'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Workflow className="w-3.5 h-3.5" />
+            Diagrama Unifilar
           </button>
           <button
             onClick={() => setActiveTab('schedule')}
@@ -968,8 +1032,13 @@ export function App() {
             onNudgeModule={handleNudgeModule}
             onSelectModule={setSelectedModuleId}
             onOpenBalancePreview={handleOpenBalancePreview}
+            onOpenBreakerRecalculatePreview={handleAutoDimensionAll}
           />
         </div>
+
+        {activeTab === 'unifilar' && (
+          <SingleLineDiagramView config={config} />
+        )}
 
         {activeTab === 'schedule' && (
           <CircuitScheduleView
@@ -977,8 +1046,10 @@ export function App() {
             onUpdateModule={handleUpdateModule}
             onDeleteModule={handleDeleteModule}
             onQuickAddCircuit={() => handleQuickAddCatalogItem('brk_1p_16')}
+            onQuickAddRcbo={() => handleQuickAddCatalogItem('rcbo_1p_16')}
             onOpenBalancePreview={handleOpenBalancePreview}
             onAutoDimensionAll={handleAutoDimensionAll}
+            onOpenBreakerRecalculatePreview={handleOpenBreakerRecalculatePreview}
           />
         )}
 
@@ -987,6 +1058,7 @@ export function App() {
             config={config}
             onExportJson={handleExportJson}
             onExportSvg={handleExportSvg}
+            onOpenUnifilar={() => setActiveTab('unifilar')}
           />
         )}
       </main>
@@ -1002,6 +1074,15 @@ export function App() {
           }
           onConfirm={handleConfirmBalancePhases}
           onCancel={() => setBalancePreview(null)}
+        />
+      )}
+
+      {/* Breaker Recalculation Preview Popup Modal */}
+      {breakerPreview && (
+        <BreakerRecalculateModal
+          preview={breakerPreview}
+          onConfirm={handleConfirmBreakerRecalculate}
+          onCancel={() => setBreakerPreview(null)}
         />
       )}
     </div>

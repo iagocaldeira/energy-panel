@@ -13,15 +13,16 @@ import { PanelConfig, WireType } from '../types/panel';
 
 export interface CatalogItemTemplate {
   key: string;
-  group: 'protection' | 'breaker_1p' | 'breaker_2p' | 'breaker_3p';
+  group: 'protection' | 'rcbo' | 'breaker_1p' | 'breaker_2p' | 'breaker_3p';
   label: string;
   sublabel: string;
   defaultName: string;
-  category: 'main_breaker' | 'idr' | 'dps' | 'breaker';
+  category: 'main_breaker' | 'idr' | 'rcbo' | 'dps' | 'breaker';
   poles: 1 | 2 | 3 | 4;
   ratingAmps: number;
   curve?: 'B' | 'C';
   circuitType: 'lighting' | 'tug' | 'tue' | 'protection';
+  sensitivityMa?: number;
   powerWatts: number;
   wireGaugeMm2: number;
 }
@@ -30,14 +31,15 @@ export const CATALOG_GROUPS: {
   id: CatalogItemTemplate['group'];
   title: string;
 }[] = [
-  { id: 'protection', title: 'Proteção e Entrada' },
+  { id: 'protection', title: 'Proteção Geral e IDRs Setoriais' },
+  { id: 'rcbo', title: 'Disjuntores DR (RCBO / DDR)' },
   { id: 'breaker_1p', title: 'Disjuntores Unipolares 1P' },
   { id: 'breaker_2p', title: 'Disjuntores Bipolares 2P' },
   { id: 'breaker_3p', title: 'Disjuntores Tripolares 3P' },
 ];
 
 export const CATALOG_ITEMS: CatalogItemTemplate[] = [
-  // Proteção e Entrada
+  // Proteção Geral e IDRs Setoriais
   {
     key: 'prot_main_2p_50',
     group: 'protection',
@@ -67,14 +69,57 @@ export const CATALOG_ITEMS: CatalogItemTemplate[] = [
     wireGaugeMm2: 16,
   },
   {
+    key: 'prot_idr_2p_25',
+    group: 'protection',
+    label: 'IDR 2 Polos 25A 30mA (Setorial)',
+    sublabel: 'DR Setor Ilum/TUG • 2P • Cabo 6 mm²',
+    defaultName: 'IDR Setor Iluminação',
+    category: 'idr',
+    poles: 2,
+    ratingAmps: 25,
+    sensitivityMa: 30,
+    circuitType: 'protection',
+    powerWatts: 0,
+    wireGaugeMm2: 6,
+  },
+  {
+    key: 'prot_idr_2p_40',
+    group: 'protection',
+    label: 'IDR 2 Polos 40A 30mA (Setorial)',
+    sublabel: 'DR Cozinha / Banheiros • 2P • Cabo 10 mm²',
+    defaultName: 'IDR Setor Molhado',
+    category: 'idr',
+    poles: 2,
+    ratingAmps: 40,
+    sensitivityMa: 30,
+    circuitType: 'protection',
+    powerWatts: 0,
+    wireGaugeMm2: 10,
+  },
+  {
     key: 'prot_idr_2p_63',
     group: 'protection',
     label: 'IDR 2 Polos 63A 30mA',
-    sublabel: 'Diferencial Residual • 2P',
+    sublabel: 'Diferencial Residual Geral/Setor • 2P',
     defaultName: 'IDR Geral',
     category: 'idr',
     poles: 2,
     ratingAmps: 63,
+    sensitivityMa: 30,
+    circuitType: 'protection',
+    powerWatts: 0,
+    wireGaugeMm2: 10,
+  },
+  {
+    key: 'prot_idr_4p_40',
+    group: 'protection',
+    label: 'IDR 4 Polos 40A 30mA (Setorial)',
+    sublabel: 'DR Setor Trifásico • 4P • Cabo 10 mm²',
+    defaultName: 'IDR Setorial Trifásico',
+    category: 'idr',
+    poles: 4,
+    ratingAmps: 40,
+    sensitivityMa: 30,
     circuitType: 'protection',
     powerWatts: 0,
     wireGaugeMm2: 10,
@@ -83,11 +128,12 @@ export const CATALOG_ITEMS: CatalogItemTemplate[] = [
     key: 'prot_idr_4p_63',
     group: 'protection',
     label: 'IDR 4 Polos 63A 30mA',
-    sublabel: 'Diferencial Residual • 4P',
+    sublabel: 'Diferencial Residual Geral/Setor • 4P',
     defaultName: 'IDR Geral',
     category: 'idr',
     poles: 4,
     ratingAmps: 63,
+    sensitivityMa: 30,
     circuitType: 'protection',
     powerWatts: 0,
     wireGaugeMm2: 16,
@@ -104,6 +150,143 @@ export const CATALOG_ITEMS: CatalogItemTemplate[] = [
     circuitType: 'protection',
     powerWatts: 0,
     wireGaugeMm2: 4,
+  },
+
+  // Disjuntores Diferenciais Residuais (RCBO / DDR)
+  {
+    key: 'rcbo_1p_10',
+    group: 'rcbo',
+    label: 'DDR 1P+N 10A 30mA',
+    sublabel: 'Curva B • Iluminação Área Úmida • 127V',
+    defaultName: 'Iluminação Úmida DDR',
+    category: 'rcbo',
+    poles: 1,
+    ratingAmps: 10,
+    curve: 'B',
+    sensitivityMa: 30,
+    circuitType: 'lighting',
+    powerWatts: 800,
+    wireGaugeMm2: 1.5,
+  },
+  {
+    key: 'rcbo_1p_16',
+    group: 'rcbo',
+    label: 'DDR 1P+N 16A 30mA',
+    sublabel: 'Curva C • Tomadas Úmidas • 127V',
+    defaultName: 'Tomadas DDR',
+    category: 'rcbo',
+    poles: 1,
+    ratingAmps: 16,
+    curve: 'C',
+    sensitivityMa: 30,
+    circuitType: 'tug',
+    powerWatts: 1500,
+    wireGaugeMm2: 2.5,
+  },
+  {
+    key: 'rcbo_1p_20',
+    group: 'rcbo',
+    label: 'DDR 1P+N 20A 30mA',
+    sublabel: 'Curva C • Cozinha / Lavanderia • 127V',
+    defaultName: 'Cozinha DDR',
+    category: 'rcbo',
+    poles: 1,
+    ratingAmps: 20,
+    curve: 'C',
+    sensitivityMa: 30,
+    circuitType: 'tug',
+    powerWatts: 2200,
+    wireGaugeMm2: 2.5,
+  },
+  {
+    key: 'rcbo_1p_25',
+    group: 'rcbo',
+    label: 'DDR 1P+N 25A 30mA',
+    sublabel: 'Curva C • Especial 127V • Cabo 4.0 mm²',
+    defaultName: 'Carga Especial DDR',
+    category: 'rcbo',
+    poles: 1,
+    ratingAmps: 25,
+    curve: 'C',
+    sensitivityMa: 30,
+    circuitType: 'tue',
+    powerWatts: 2800,
+    wireGaugeMm2: 4.0,
+  },
+  {
+    key: 'rcbo_2p_20',
+    group: 'rcbo',
+    label: 'DDR 2P 20A 30mA',
+    sublabel: 'Curva C • Banheiro / TUE 220V',
+    defaultName: 'TUE 220V DDR',
+    category: 'rcbo',
+    poles: 2,
+    ratingAmps: 20,
+    curve: 'C',
+    sensitivityMa: 30,
+    circuitType: 'tue',
+    powerWatts: 2400,
+    wireGaugeMm2: 2.5,
+  },
+  {
+    key: 'rcbo_2p_25',
+    group: 'rcbo',
+    label: 'DDR 2P 25A 30mA',
+    sublabel: 'Curva C • Banheira / Hidromassagem • 220V',
+    defaultName: 'Hidromassagem DDR',
+    category: 'rcbo',
+    poles: 2,
+    ratingAmps: 25,
+    curve: 'C',
+    sensitivityMa: 30,
+    circuitType: 'tue',
+    powerWatts: 4000,
+    wireGaugeMm2: 4.0,
+  },
+  {
+    key: 'rcbo_2p_32',
+    group: 'rcbo',
+    label: 'DDR 2P 32A 30mA',
+    sublabel: 'Curva C • Chuveiro Elétrico 5500W • 220V',
+    defaultName: 'Chuveiro DDR',
+    category: 'rcbo',
+    poles: 2,
+    ratingAmps: 32,
+    curve: 'C',
+    sensitivityMa: 30,
+    circuitType: 'tue',
+    powerWatts: 5500,
+    wireGaugeMm2: 6.0,
+  },
+  {
+    key: 'rcbo_2p_40',
+    group: 'rcbo',
+    label: 'DDR 2P 40A 30mA',
+    sublabel: 'Curva C • Chuveiro Suíte 6800W • 220V',
+    defaultName: 'Chuveiro Suíte DDR',
+    category: 'rcbo',
+    poles: 2,
+    ratingAmps: 40,
+    curve: 'C',
+    sensitivityMa: 30,
+    circuitType: 'tue',
+    powerWatts: 6800,
+    wireGaugeMm2: 6.0,
+  },
+  {
+    key: 'rcbo_3p_32',
+    group: 'rcbo',
+    label: 'DDR 3P 32A 30mA',
+    sublabel: 'Curva C • Motor / Carga Trifásica Molhada',
+    defaultName: 'Motor Trifásico DDR',
+    category: 'rcbo',
+    poles: 3,
+    ratingAmps: 32,
+    curve: 'C',
+    sensitivityMa: 30,
+    circuitType: 'tue',
+    powerWatts: 7500,
+    wireGaugeMm2: 6.0,
   },
 
   // Disjuntores Unipolares 1P
@@ -324,6 +507,7 @@ export const CatalogSidebar: React.FC<CatalogSidebarProps> = ({
 }) => {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     protection: true,
+    rcbo: true,
     breaker_1p: true,
     breaker_2p: true,
     breaker_3p: false,
@@ -427,9 +611,22 @@ export const CatalogSidebar: React.FC<CatalogSidebarProps> = ({
               </span>
             )}
             {config.groundingSystem === 'TN-C-S' && (
-              <span>
-                <strong className="text-sky-400">TN-C-S:</strong> PEN da concessionária entra no QDC e se divide no barramento de equipotencialização antes do IDR. A jusante, N e PE não se reconectam.
-              </span>
+              <div className="space-y-1.5">
+                <span>
+                  <strong className="text-sky-400">TN-C-S:</strong> PEN da concessionária entra no QDC e se divide no barramento de equipotencialização antes do IDR. A jusante, N e PE não se reconectam.
+                </span>
+                <label className="flex items-center gap-1.5 pt-1 text-[10px] text-slate-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={config.penGroundedAtPanel !== false}
+                    onChange={(e) =>
+                      onUpdateConfig({ penGroundedAtPanel: e.target.checked })
+                    }
+                    className="rounded accent-sky-500 w-3 h-3 cursor-pointer"
+                  />
+                  <span>Condutor PEN aterrado no quadro (DPS de neutro dispensado - NBR 5410 item 6.3.5.2.4)</span>
+                </label>
+              </div>
             )}
             {config.groundingSystem === 'TN-C' && (
               <span>

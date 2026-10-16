@@ -7,6 +7,7 @@ export type GroundingSystem = 'TN-S' | 'TN-C-S' | 'TN-C' | 'TT' | 'IT';
 export type ComponentCategory =
   | 'main_breaker'
   | 'idr'
+  | 'rcbo'
   | 'dps'
   | 'breaker';
 
@@ -30,14 +31,14 @@ export type RailId =
 export interface PanelModule {
   id: string;
   category: ComponentCategory;
-  name: string;               // e.g. "Chuveiro Suíte", "Disjuntor Geral"
+  name: string;               // e.g. "Chuveiro Suíte", "Disjuntor Geral", "IDR Cozinha"
   circuitNumber?: number;     // e.g. 1, 2, 3...
   room?: string;              // e.g. "Cozinha", "Suíte", "Sala"
   circuitType: CircuitType;
   poles: 1 | 2 | 3 | 4;
   ratingAmps: number;         // e.g. 10, 16, 20, 25, 32, 40, 50, 63
-  curve?: CurveType;          // B, C, D for breakers
-  sensitivityMa?: number;     // 30mA for IDR
+  curve?: CurveType;          // B, C, D for breakers and RCBOs
+  sensitivityMa?: number;     // 30mA, 10mA, 300mA for IDR and RCBO
   dpsKa?: number;             // 20kA, 45kA for DPS
   dpsVoltage?: number;        // 275V, 175V
   railId: RailId;
@@ -47,8 +48,13 @@ export interface PanelModule {
   powerWatts: number;         // Load in Watts (e.g. 5500W, 1200W)
   wireGaugeMm2: number;       // 1.5, 2.5, 4, 6, 10, 16, 25
   isOn: boolean;              // Interactive switch state in simulator
-  drProtected?: boolean;      // Connected under IDR protection
+  drProtected?: boolean;      // Connected under IDR protection (or self-protected if RCBO)
+  idrId?: string;             // ID of the sectoral IDR protecting this circuit
   notes?: string;
+  lengthMeters?: number;      // Circuit length L in meters (QDC to load terminal)
+  powerFactor?: number;       // cos φ (1.0 for resistive, 0.85 for motor/cooling)
+  groupingFactor?: number;    // FCA - Fator de Correção por Agrupamento (NBR 5410 Tabela 42)
+  groupingCircuitsCount?: number; // Number of grouped circuits in the conduit
 }
 
 export interface WireConnection {
@@ -81,6 +87,7 @@ export interface PanelConfig {
   supplyType: SupplyType;
   voltageSystem: VoltageSystem;
   groundingSystem: GroundingSystem;
+  penGroundedAtPanel?: boolean; // In TN-C-S: true if PEN is grounded directly at the panel (jumper PEN to PE bar)
   fishboneSlotsPerSide: number;
   horizontalRows: number;
   modulesPerRow: number;

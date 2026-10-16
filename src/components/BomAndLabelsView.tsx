@@ -6,25 +6,28 @@ import {
   Printer,
   ShoppingBag,
   Tag,
+  Workflow,
 } from 'lucide-react';
 import { PanelConfig } from '../types/panel';
-import { generateBillOfMaterials } from '../utils/electrical';
+import { calculateVoltageDrop, generateBillOfMaterials, isLoadCircuit } from '../utils/electrical';
 
 interface BomAndLabelsViewProps {
   config: PanelConfig;
   onExportJson: () => void;
   onExportSvg: () => void;
+  onOpenUnifilar?: () => void;
 }
 
 export const BomAndLabelsView: React.FC<BomAndLabelsViewProps> = ({
   config,
   onExportJson,
   onExportSvg,
+  onOpenUnifilar,
 }) => {
   const [copied, setCopied] = useState(false);
   const bomItems = generateBillOfMaterials(config);
   const circuits = config.modules
-    .filter((m) => m.category === 'breaker')
+    .filter(isLoadCircuit)
     .sort((a, b) => (a.circuitNumber || 99) - (b.circuitNumber || 99));
 
   const handleCopyBom = () => {
@@ -76,12 +79,21 @@ export const BomAndLabelsView: React.FC<BomAndLabelsViewProps> = ({
               </>
             )}
           </button>
+          {onOpenUnifilar && (
+            <button
+              onClick={onOpenUnifilar}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 text-xs font-semibold transition"
+            >
+              <Workflow className="w-4 h-4" />
+              Diagrama Unifilar (SVG/PDF)
+            </button>
+          )}
           <button
             onClick={onExportSvg}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition"
           >
             <Download className="w-4 h-4" />
-            Baixar Diagrama (.SVG)
+            Baixar Quadro (.SVG)
           </button>
           <button
             onClick={onExportJson}
@@ -158,11 +170,14 @@ export const BomAndLabelsView: React.FC<BomAndLabelsViewProps> = ({
         <div className="flex flex-wrap gap-2 p-4 bg-white rounded-lg border-2 border-dashed border-slate-400 text-slate-900">
           {config.modules.map((m, idx) => {
             const widthPx = m.poles * 66;
+            const isRcbo = m.category === 'rcbo';
             const headerColor =
               m.category === 'main_breaker'
                 ? 'bg-red-600 text-white'
                 : m.category === 'idr'
                 ? 'bg-sky-600 text-white'
+                : isRcbo
+                ? 'bg-emerald-600 text-white'
                 : m.category === 'dps'
                 ? 'bg-rose-600 text-white'
                 : m.circuitType === 'lighting'
@@ -181,7 +196,9 @@ export const BomAndLabelsView: React.FC<BomAndLabelsViewProps> = ({
                   {m.category === 'dps'
                     ? `DPS • ${m.dpsKa || 20}kA`
                     : m.category === 'idr'
-                    ? `IDR • ${m.ratingAmps}A`
+                    ? `${m.name && m.name !== 'IDR' ? (m.name.length > 10 ? m.name.slice(0, 9) + '…' : m.name) : 'IDR'} • ${m.ratingAmps}A`
+                    : isRcbo
+                    ? `DDR • C${m.circuitNumber || '?'} • ${m.ratingAmps}A`
                     : m.circuitNumber
                     ? `C${m.circuitNumber} • ${m.ratingAmps}A`
                     : `${m.ratingAmps}A`}
@@ -201,6 +218,8 @@ export const BomAndLabelsView: React.FC<BomAndLabelsViewProps> = ({
                     ? `${m.dpsVoltage || 275}V • ${m.phases === 'N' ? 'Neutro' : 'Fase ' + m.phases} • Cl. II`
                     : m.category === 'idr'
                     ? `${m.voltage}V • ΔI ${m.sensitivityMa || 30}mA • ${m.poles}P`
+                    : isRcbo
+                    ? `${m.voltage}V • ΔI ${m.sensitivityMa || 30}mA • ${m.wireGaugeMm2}mm²`
                     : `${m.voltage}V • ${m.phases} • ${m.wireGaugeMm2}mm²`}
                 </div>
               </div>
@@ -221,7 +240,9 @@ export const BomAndLabelsView: React.FC<BomAndLabelsViewProps> = ({
               className="flex items-center justify-between p-2.5 rounded border border-slate-800 bg-slate-950 print:bg-white print:border-slate-300 text-xs"
             >
               <div className="flex items-center gap-2.5">
-                <span className="w-8 h-7 rounded bg-amber-500 text-slate-950 font-mono font-extrabold flex items-center justify-center">
+                <span className={`w-8 h-7 rounded font-mono font-extrabold flex items-center justify-center ${
+                  c.category === 'rcbo' ? 'bg-emerald-500 text-slate-950' : 'bg-amber-500 text-slate-950'
+                }`}>
                   C{c.circuitNumber || idx + 1}
                 </span>
                 <div>
@@ -233,10 +254,21 @@ export const BomAndLabelsView: React.FC<BomAndLabelsViewProps> = ({
               </div>
               <div className="text-right font-mono text-[11px] text-slate-300 print:text-black">
                 <div>
-                  Disj: <strong>{c.curve || 'C'}{c.ratingAmps}A ({c.poles}P)</strong>
+                  Disj: <strong>{c.category === 'rcbo' ? 'DDR ' : ''}{c.curve || 'C'}{c.ratingAmps}A ({c.poles}P)</strong>
+                  {c.category === 'rcbo' ? (
+                    <span className="text-emerald-500 font-bold"> [30mA]</span>
+                  ) : c.idrId ? (() => {
+                    const idr = config.modules.find(x => x.id === c.idrId);
+                    return idr ? <span className="text-sky-400 font-medium"> [{idr.name}]</span> : null;
+                  })() : null}
                 </div>
                 <div>
                   Cabo: <strong>{c.wireGaugeMm2} mm² ({c.phases})</strong>
+                  {c.lengthMeters && (
+                    <span className="text-slate-400">
+                      {' '}• L={c.lengthMeters}m (ΔV {calculateVoltageDrop(c).dropPercent}%)
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

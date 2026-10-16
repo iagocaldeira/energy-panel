@@ -1056,17 +1056,175 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
               </text>
             </g>
 
-            <rect x={6} y={75} width={w - 12} height={17} rx={2.5} fill="#0f172a" />
+            <rect x={6} y={75} width={w - 12} height={17} rx={2.5} fill="#0f172a" stroke="#0284c7" strokeWidth={0.7} />
             <text
               x={w / 2}
               y={86.5}
               textAnchor="middle"
-              fontSize={8}
+              fontSize={m.poles >= 4 ? 7.5 : 7}
               fontWeight="bold"
               fill="#38bdf8"
             >
-              DR • FASES + N
+              <title>{m.name || 'IDR Setorial'}</title>
+              {m.name && m.name !== 'IDR'
+                ? m.name.length > (m.poles >= 4 ? 22 : 11)
+                  ? m.name.slice(0, m.poles >= 4 ? 21 : 10) + '…'
+                  : m.name
+                : 'DR • FASES + N'}
             </text>
+          </g>
+        ) : (m.category as any) === 'rcbo' ? (
+          <g>
+            <rect
+              x={4}
+              y={22}
+              width={w - 8}
+              height={20}
+              rx={2.5}
+              fill="#f0fdf4"
+              stroke="#86efac"
+              strokeWidth={0.9}
+            />
+            <text
+              x={w / 2}
+              y={35}
+              textAnchor="middle"
+              fontSize={m.poles === 1 ? 7 : 8}
+              fontWeight="bold"
+              fill="#14532d"
+            >
+              DDR {m.curve || 'C'}{m.ratingAmps} • {m.sensitivityMa || 30}mA
+            </text>
+
+            <g
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleModulePower(m.id);
+              }}
+              className="cursor-pointer"
+            >
+              {w >= 60 ? (
+                <>
+                  <rect
+                    x={5}
+                    y={46}
+                    width={w - 32}
+                    height={24}
+                    rx={3}
+                    fill="#e2e8f0"
+                    stroke="#94a3b8"
+                    strokeWidth={0.9}
+                  />
+                  <rect
+                    x={6}
+                    y={m.isOn ? 47 : 57}
+                    width={w - 34}
+                    height={12}
+                    rx={2}
+                    fill={m.isOn ? '#dc2626' : '#475569'}
+                  />
+                  <text
+                    x={(w - 22) / 2}
+                    y={m.isOn ? 55.5 : 65.5}
+                    textAnchor="middle"
+                    fontSize={6.5}
+                    fontWeight="bold"
+                    fill="#ffffff"
+                  >
+                    {m.isOn ? 'ON' : 'OFF'}
+                  </text>
+                  <rect
+                    x={w - 24}
+                    y={48}
+                    width={18}
+                    height={20}
+                    rx={2.5}
+                    fill="#fef08a"
+                    stroke="#ca8a04"
+                    strokeWidth={1}
+                  />
+                  <text
+                    x={w - 15}
+                    y={61}
+                    textAnchor="middle"
+                    fontSize={8.5}
+                    fontWeight="bold"
+                    fill="#854d0e"
+                  >
+                    T
+                  </text>
+                </>
+              ) : (
+                <>
+                  <rect
+                    x={3}
+                    y={46}
+                    width={w - 6}
+                    height={24}
+                    rx={3}
+                    fill="#e2e8f0"
+                    stroke="#94a3b8"
+                    strokeWidth={0.9}
+                  />
+                  <rect
+                    x={4}
+                    y={m.isOn ? 47 : 57}
+                    width={w - 8}
+                    height={12}
+                    rx={2}
+                    fill={m.isOn ? '#dc2626' : '#475569'}
+                  />
+                  <text
+                    x={w / 2}
+                    y={m.isOn ? 55.5 : 65.5}
+                    textAnchor="middle"
+                    fontSize={6.5}
+                    fontWeight="bold"
+                    fill="#ffffff"
+                  >
+                    {m.isOn ? 'ON' : 'OFF'}
+                  </text>
+                </>
+              )}
+            </g>
+
+            <rect x={3} y={72} width={w - 6} height={20} rx={2.5} fill="#052e16" stroke="#15803d" strokeWidth={0.8} />
+            <title>{m.circuitNumber ? `Circuito ${m.circuitNumber} (DDR): ${m.name}` : m.name}</title>
+            {m.circuitNumber ? (
+              <g>
+                <text
+                  x={w / 2}
+                  y={81.5}
+                  textAnchor="middle"
+                  fontSize={7}
+                  fontWeight="bold"
+                  fill="#4ade80"
+                >
+                  C{m.circuitNumber} • DDR
+                </text>
+                <text
+                  x={w / 2}
+                  y={89.5}
+                  textAnchor="middle"
+                  fontSize={5.8}
+                  fill="#bbf7d0"
+                >
+                  {m.name.length > (m.poles >= 2 ? 14 : 7) ? m.name.slice(0, (m.poles >= 2 ? 13 : 6)) + '…' : m.name}
+                </text>
+              </g>
+            ) : (
+              <text
+                x={w / 2}
+                y={85}
+                textAnchor="middle"
+                fontSize={7.5}
+                fontWeight="bold"
+                fill="#4ade80"
+              >
+                DDR INDIVIDUAL
+              </text>
+            )}
           </g>
         ) : (
           <g>
@@ -1197,7 +1355,8 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
     const isSelected = selectedModuleId === m.id;
     const isBeingDragged = pointerDrag?.module.id === m.id && pointerDrag.hasMoved;
     const current = calculateCircuitCurrent(m);
-    const isOverloaded = m.category === 'breaker' && current > m.ratingAmps;
+    const isRcbo = (m.category as any) === 'rcbo';
+    const isOverloaded = (m.category === 'breaker' || isRcbo) && current > m.ratingAmps;
 
     return (
       <g
@@ -1227,8 +1386,8 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
           width={w}
           height={h - 2}
           rx={4}
-          fill="#f8fafc"
-          stroke="#64748b"
+          fill={isRcbo ? '#f0fdf4' : '#f8fafc'}
+          stroke={isRcbo ? '#4ade80' : '#64748b'}
           strokeWidth={1.5}
         />
 
@@ -1280,7 +1439,7 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
           );
         })}
 
-        {/* Toggle Switch Handle */}
+        {/* Toggle Switch Handle & Test Button for RCBO */}
         <g
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => {
@@ -1315,6 +1474,31 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
             rx={2}
             fill={m.isOn ? '#dc2626' : '#475569'}
           />
+
+          {isRcbo && (
+            <g>
+              <rect
+                x={side === 'left' ? 96 : 4}
+                y={h / 2 - 7}
+                width={13}
+                height={14}
+                rx={2}
+                fill="#fef08a"
+                stroke="#ca8a04"
+                strokeWidth={0.9}
+              />
+              <text
+                x={side === 'left' ? 102.5 : 10.5}
+                y={h / 2 + 3}
+                textAnchor="middle"
+                fontSize={7.5}
+                fontWeight="bold"
+                fill="#854d0e"
+              >
+                T
+              </text>
+            </g>
+          )}
         </g>
 
         {/* Clean Specification Box */}
@@ -1324,8 +1508,8 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
           width={47}
           height={h - 12}
           rx={3}
-          fill="#f1f5f9"
-          stroke="#cbd5e1"
+          fill={isRcbo ? '#dcfce7' : '#f1f5f9'}
+          stroke={isRcbo ? '#86efac' : '#cbd5e1'}
           strokeWidth={1}
         />
         <text
@@ -1334,8 +1518,9 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
           textAnchor="middle"
           fontSize={8.5}
           fontWeight="bold"
-          fill="#0f172a"
+          fill={isRcbo ? '#14532d' : '#0f172a'}
         >
+          {isRcbo ? 'DDR ' : ''}
           {m.curve || 'C'}
           {m.ratingAmps}A
         </text>
@@ -1343,11 +1528,11 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
           x={side === 'left' ? 46.5 : 69.5}
           y={h / 2 + 9}
           textAnchor="middle"
-          fontSize={7.5}
+          fontSize={7}
           fontWeight="bold"
-          fill="#475569"
+          fill={isRcbo ? '#15803d' : '#475569'}
         >
-          Fase {m.phases}
+          {isRcbo ? `${m.sensitivityMa || 30}mA • ${m.phases}` : `Fase ${m.phases}`}
         </text>
 
         {/* External High-Contrast Circuit Name Plaque */}
@@ -1364,8 +1549,8 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
             width={134}
             height={16}
             rx={3}
-            fill="#0f172a"
-            stroke="#334155"
+            fill={isRcbo ? '#052e16' : '#0f172a'}
+            stroke={isRcbo ? '#15803d' : '#334155'}
             strokeWidth={1}
           />
           <text
@@ -1374,10 +1559,10 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
             textAnchor="middle"
             fontSize={8}
             fontWeight="bold"
-            fill="#f8fafc"
+            fill={isRcbo ? '#4ade80' : '#f8fafc'}
           >
-            <title>{`C${m.circuitNumber || '?'} • ${m.name}`}</title>
-            C{m.circuitNumber || '?'} • {m.name.length > 16 ? m.name.slice(0, 15) + '…' : m.name}
+            <title>{`C${m.circuitNumber || '?'} • ${m.name}${isRcbo ? ' (DDR ' + (m.sensitivityMa || 30) + 'mA)' : ''}`}</title>
+            C{m.circuitNumber || '?'} • {isRcbo ? 'DDR • ' : ''}{m.name.length > 14 ? m.name.slice(0, 13) + '…' : m.name}
           </text>
         </g>
       </g>

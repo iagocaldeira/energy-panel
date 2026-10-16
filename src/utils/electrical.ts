@@ -1,4 +1,5 @@
 import {
+  CurveType,
   GroundingSystem,
   PanelConfig,
   PanelModule,
@@ -25,26 +26,167 @@ export const WIRE_AMPACITY_TABLE: {
 
 export const STANDARD_BREAKER_RATINGS = [6, 10, 16, 20, 25, 32, 40, 50, 63, 70, 80, 100];
 
-export function calculateCircuitCurrent(module: PanelModule): number {
-  if (module.category !== 'breaker' || module.powerWatts <= 0) return 0;
-  if (module.poles === 3) {
-    return +(module.powerWatts / (Math.sqrt(3) * module.voltage)).toFixed(1);
+// Resistividade do cobre a 20°C segundo a NBR 5410 (ρ = 1/58 = 0.01724 Ω·mm²/m)
+export const COPPER_RESISTIVITY = 0.01724;
+
+// Tabela 42 da NBR 5410 — Fatores de Correção por Agrupamento (FCA) em feixe ou eletroduto
+export interface GroupingFactorOption {
+  circuitsCount: number;
+  label: string;
+  fca: number;
+}
+
+export const GROUPING_FACTORS_TABLE: GroupingFactorOption[] = [
+  { circuitsCount: 1, label: '1 circuito (FCA 1,00)', fca: 1.00 },
+  { circuitsCount: 2, label: '2 circuitos (FCA 0,80)', fca: 0.80 },
+  { circuitsCount: 3, label: '3 circuitos (FCA 0,70)', fca: 0.70 },
+  { circuitsCount: 4, label: '4 circuitos (FCA 0,65)', fca: 0.65 },
+  { circuitsCount: 5, label: '5 circuitos (FCA 0,60)', fca: 0.60 },
+  { circuitsCount: 6, label: '6 circuitos (FCA 0,57)', fca: 0.57 },
+  { circuitsCount: 7, label: '7 circuitos (FCA 0,54)', fca: 0.54 },
+  { circuitsCount: 8, label: '8 circuitos (FCA 0,52)', fca: 0.52 },
+  { circuitsCount: 9, label: '9 a 11 circuitos (FCA 0,50)', fca: 0.50 },
+  { circuitsCount: 12, label: '12 a 15 circuitos (FCA 0,45)', fca: 0.45 },
+  { circuitsCount: 16, label: '16 a 19 circuitos (FCA 0,41)', fca: 0.41 },
+  { circuitsCount: 20, label: '≥ 20 circuitos (FCA 0,38)', fca: 0.38 },
+];
+
+export function getFcaFromCircuitsCount(count: number): number {
+  if (count <= 1) return 1.00;
+  if (count === 2) return 0.80;
+  if (count === 3) return 0.70;
+  if (count === 4) return 0.65;
+  if (count === 5) return 0.60;
+  if (count === 6) return 0.57;
+  if (count === 7) return 0.54;
+  if (count === 8) return 0.52;
+  if (count <= 11) return 0.50;
+  if (count <= 15) return 0.45;
+  if (count <= 19) return 0.41;
+  return 0.38;
+}
+
+export function getDefaultPowerFactor(name?: string, circuitType?: PanelModule['circuitType']): number {
+  const n = (name || '').toLowerCase();
+  // Cargas indutoras / motores / ar-condicionado / refrigeração: default 0.85
+  if (
+    n.includes('ar condicionado') ||
+    n.includes('ar-condicionado') ||
+    n.includes('a/c') ||
+    n.includes('climatiz') ||
+    n.includes('geladeira') ||
+    n.includes('refrig') ||
+    n.includes('motor') ||
+    n.includes('bomba') ||
+    n.includes('freezer') ||
+    n.includes('compressor') ||
+    n.includes('ventilador') ||
+    n.includes('ventila')
+  ) {
+    return 0.85;
   }
-  return +(module.powerWatts / module.voltage).toFixed(1);
+  return 1.0;
+}
+
+export function getCircuitPowerFactor(module: PanelModule): number {
+  if (typeof module.powerFactor === 'number' && module.powerFactor > 0) {
+    return Math.max(0.2, Math.min(1.0, module.powerFactor));
+  }
+  return getDefaultPowerFactor(module.name, module.circuitType);
+}
+
+export function getEffectiveWireAmpacity(
+  wireGaugeMm2: number,
+  poles: number,
+  groupingFactor: number = 1.0
+): number {
+  const wireRow = WIRE_AMPACITY_TABLE.find((w) => w.gaugeMm2 === wireGaugeMm2);
+  const baseCapacity = wireRow ? (poles >= 3 ? wireRow.maxAmps3P : wireRow.maxAmps2P) : 24;
+  const fca = groupingFactor > 0 ? groupingFactor : 1.0;
+  return +(baseCapacity * fca).toFixed(1);
+}
+
+export interface VoltageDropResult {
+  dropVolts: number;
+  dropPercent: number;
+  isExcessive: boolean; // dropPercent > 4.0%
+}
+
+export function calculateVoltageDrop(
+  module: PanelModule,
+  overrideGauge?: number,
+  overrideLength?: number
+): VoltageDropResult {
+  if ((module.category !== 'breaker' && module.category !== 'rcbo') || module.powerWatts <= 0) {
+    return { dropVolts: 0, dropPercent: 0, isExcessive: false };
+  }
+  const current = calculateCircuitCurrent(module);
+  const length =
+    overrideLength !== undefined
+      ? overrideLength
+      : module.lengthMeters !== undefined && module.lengthMeters > 0
+      ? module.lengthMeters
+      : 15;
+  const gauge = overrideGauge ?? module.wireGaugeMm2;
+  const volt = module.voltage || (module.poles === 1 ? 127 : 220);
+
+  if (gauge <= 0 || volt <= 0 || current <= 0 || length <= 0) {
+    return { dropVolts: 0, dropPercent: 0, isExcessive: false };
+  }
+
+  // NBR 5410:
+  // Monofásico / Bifásico: ΔV = (2 * ρ * L * I) / S
+  // Trifásico equilibrado: ΔV = (√3 * ρ * L * I) / S
+  const factor = module.poles >= 3 ? Math.sqrt(3) : 2;
+  const dropVolts = +((factor * COPPER_RESISTIVITY * length * current) / gauge).toFixed(2);
+  const dropPercent = +((dropVolts / volt) * 100).toFixed(2);
+  const isExcessive = dropPercent > 4.0;
+
+  return { dropVolts, dropPercent, isExcessive };
+}
+
+export function calculateCircuitCurrent(module: PanelModule): number {
+  if ((module.category !== 'breaker' && module.category !== 'rcbo') || module.powerWatts <= 0) return 0;
+  const pf = getCircuitPowerFactor(module);
+  if (module.poles >= 3) {
+    return +(module.powerWatts / (Math.sqrt(3) * module.voltage * pf)).toFixed(1);
+  }
+  return +(module.powerWatts / (module.voltage * pf)).toFixed(1);
+}
+
+export interface WireGaugeOptions {
+  lengthMeters?: number;
+  voltage?: number;
+  groupingFactor?: number;
 }
 
 export function getRecommendedWireGauge(
   currentAmps: number,
   breakerAmps: number,
   circuitType: PanelModule['circuitType'],
-  poles: number
+  poles: number,
+  options?: WireGaugeOptions
 ): number {
   const minGauge = circuitType === 'lighting' ? 1.5 : 2.5;
+  const fca = options?.groupingFactor && options.groupingFactor > 0 ? options.groupingFactor : 1.0;
   const targetAmps = Math.max(currentAmps, breakerAmps);
+
+  // Critério de Queda de Tensão máxima de 4% (NBR 5410)
+  const length =
+    options?.lengthMeters !== undefined && options.lengthMeters > 0 ? options.lengthMeters : 15;
+  const volt = options?.voltage ?? (poles === 1 ? 127 : 220);
+  const factor = poles >= 3 ? Math.sqrt(3) : 2;
+  const minGaugeVoltageDrop =
+    currentAmps > 0 && volt > 0
+      ? (factor * COPPER_RESISTIVITY * length * currentAmps) / (0.04 * volt)
+      : 0;
+
   for (const row of WIRE_AMPACITY_TABLE) {
     if (row.gaugeMm2 < minGauge) continue;
-    const capacity = poles >= 3 ? row.maxAmps3P : row.maxAmps2P;
-    if (capacity >= targetAmps) {
+    if (row.gaugeMm2 < minGaugeVoltageDrop) continue;
+    const baseCapacity = poles >= 3 ? row.maxAmps3P : row.maxAmps2P;
+    const effectiveCapacity = baseCapacity * fca;
+    if (effectiveCapacity >= targetAmps) {
       return row.gaugeMm2;
     }
   }
@@ -139,6 +281,10 @@ export interface PhaseCircuitContribution {
   ampsOnPhase: number;
 }
 
+export function isLoadCircuit(module: PanelModule): boolean {
+  return module.category === 'breaker' || module.category === 'rcbo';
+}
+
 export function getCircuitsByPhase(
   config: PanelConfig,
   phase: 'R' | 'S' | 'T'
@@ -149,19 +295,20 @@ export function getCircuitsByPhase(
   const list: PhaseCircuitContribution[] = [];
 
   for (const mod of config.modules) {
-    if (mod.category !== 'breaker' || !mod.isOn || mod.powerWatts <= 0) continue;
+    if (!isLoadCircuit(mod) || !mod.isOn || mod.powerWatts <= 0) continue;
     if (!mod.phases.includes(phase)) continue;
 
     const numPhasesUsed = mod.phases.length || 1;
     const wattsOnPhase = Math.round(mod.powerWatts / numPhasesUsed);
 
+    const pf = getCircuitPowerFactor(mod);
     let ampsOnPhase = 0;
     if (mod.poles >= 3) {
-      ampsOnPhase = +(mod.powerWatts / (Math.sqrt(3) * (mod.voltage || vFF))).toFixed(1);
+      ampsOnPhase = +(mod.powerWatts / (Math.sqrt(3) * (mod.voltage || vFF) * pf)).toFixed(1);
     } else if (mod.poles === 2) {
-      ampsOnPhase = +(mod.powerWatts / (mod.voltage || vFF)).toFixed(1);
+      ampsOnPhase = +(mod.powerWatts / ((mod.voltage || vFF) * pf)).toFixed(1);
     } else {
-      ampsOnPhase = +(mod.powerWatts / (mod.voltage || vFN)).toFixed(1);
+      ampsOnPhase = +(mod.powerWatts / ((mod.voltage || vFN) * pf)).toFixed(1);
     }
 
     list.push({
@@ -200,13 +347,14 @@ export function calculatePhaseBalance(config: PanelConfig): PhaseLoadSummary {
   const vFF = is127_220 ? 220 : 380;
 
   for (const mod of config.modules) {
-    if (mod.category !== 'breaker' || !mod.isOn || mod.powerWatts <= 0) continue;
+    if (!isLoadCircuit(mod) || !mod.isOn || mod.powerWatts <= 0) continue;
 
     const p = mod.powerWatts;
     const volt = mod.voltage || (mod.poles === 1 ? vFN : vFF);
+    const pf = getCircuitPowerFactor(mod);
 
     if (mod.poles >= 3) {
-      const i3P = p / (Math.sqrt(3) * volt);
+      const i3P = p / (Math.sqrt(3) * volt * pf);
       wattsR += p / 3;
       wattsS += p / 3;
       wattsT += p / 3;
@@ -214,7 +362,7 @@ export function calculatePhaseBalance(config: PanelConfig): PhaseLoadSummary {
       ampsSSum += i3P;
       ampsTSum += i3P;
     } else if (mod.poles === 2) {
-      const i2P = p / volt;
+      const i2P = p / (volt * pf);
       if (mod.phases === 'RS') {
         wattsR += p / 2;
         wattsS += p / 2;
@@ -239,7 +387,7 @@ export function calculatePhaseBalance(config: PanelConfig): PhaseLoadSummary {
       }
     } else {
       // 1P
-      const i1P = p / volt;
+      const i1P = p / (volt * pf);
       if (mod.phases === 'S') {
         wattsS += p;
         ampsSSum += i1P;
@@ -299,12 +447,238 @@ export interface ValidationIssue {
   phaseCircuits?: PhaseCircuitContribution[];
 }
 
+export interface Table59ReserveStatus {
+  circuitCount: number;
+  totalSlots: number;
+  occupiedSlots: number;
+  freeSlots: number;
+  requiredReserve: number;
+  isCompliant: boolean;
+  isOverflowing: boolean;
+}
+
+/**
+ * Calculates total available DIN module slots based on panel topology.
+ * - Horizontal: horizontalRows * modulesPerRow
+ * - Fishbone: 12 slots (top main rail) + 2 * fishboneSlotsPerSide (left & right rails)
+ */
+export function getPanelTotalSlots(config: PanelConfig): number {
+  if (config.topology === 'fishbone') {
+    return 12 + config.fishboneSlotsPerSide * 2;
+  }
+  return config.horizontalRows * config.modulesPerRow;
+}
+
+/**
+ * Calculates the total number of occupied slots (poles) by all installed modules in the panel.
+ */
+export function getPanelOccupiedSlots(config: PanelConfig): number {
+  return config.modules.reduce((sum, m) => sum + m.poles, 0);
+}
+
+/**
+ * NBR 5410 Tabela 59 - Espaço de reserva nos quadros de distribuição:
+ * - Até 6 circuitos: reserva mínima de 2 espaços/módulos
+ * - De 7 a 12 circuitos: reserva mínima de 3 espaços/módulos
+ * - De 13 a 30 circuitos: reserva mínima de 4 espaços/módulos
+ * - Mais de 30 circuitos: reserva mínima de 0,15 * N (arredondado para cima)
+ */
+export function getRequiredReserveSlotsNBR5410(circuitCount: number): number {
+  if (circuitCount <= 0) return 0;
+  if (circuitCount <= 6) return 2;
+  if (circuitCount <= 12) return 3;
+  if (circuitCount <= 30) return 4;
+  return Math.ceil(circuitCount * 0.15);
+}
+
+export function getTable59ReserveStatus(config: PanelConfig): Table59ReserveStatus {
+  const circuitCount = config.modules.filter(isLoadCircuit).length;
+  const totalSlots = getPanelTotalSlots(config);
+  const occupiedSlots = getPanelOccupiedSlots(config);
+  const freeSlots = totalSlots - occupiedSlots;
+  const requiredReserve = getRequiredReserveSlotsNBR5410(circuitCount);
+  const isOverflowing = occupiedSlots > totalSlots;
+  const isCompliant = !isOverflowing && freeSlots >= requiredReserve;
+
+  return {
+    circuitCount,
+    totalSlots,
+    occupiedSlots,
+    freeSlots,
+    requiredReserve,
+    isCompliant,
+    isOverflowing,
+  };
+}
+
+export interface DrRequirementResult {
+  mandatory: boolean;
+  reason?: string;
+  matchedLocation?: string;
+}
+
+/**
+ * Checks if a circuit is required by NBR 5410 (item 5.1.3.2.2) to have high-sensitivity DR (IDR <= 30mA).
+ * Mandatory cases:
+ * - Bathrooms, showers, bathtubs (item 5.1.3.2.2.a)
+ * - Kitchens, pantries, wet areas subject to cleaning (item 5.1.3.2.2.d)
+ * - Laundries, service areas, garages (item 5.1.3.2.2.d)
+ * - External circuits, gardens, outdoor outlets, porches (item 5.1.3.2.2.b/c)
+ */
+export function checkDrRequirement(module: PanelModule): DrRequirementResult {
+  if (module.category !== 'breaker') {
+    return { mandatory: false };
+  }
+
+  const norm = (s?: string) =>
+    (s || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+
+  const room = norm(module.room);
+  const name = norm(module.name);
+
+  // 1. Bathrooms / Shower areas (item 5.1.3.2.2.a)
+  const bathroomKeywords = [
+    'banheiro',
+    'banho',
+    'suite',
+    'lavabo',
+    'bwc',
+    'sanitario',
+    'vestiario',
+  ];
+  const showerKeywords = [
+    'chuveiro',
+    'ducha',
+    'hidro',
+    'banheira',
+    'jacuzzi',
+  ];
+
+  for (const kw of bathroomKeywords) {
+    if (room.includes(kw) || name.includes(kw)) {
+      return {
+        mandatory: true,
+        reason: 'Locais contendo banheira ou chuveiro (NBR 5410 item 5.1.3.2.2.a)',
+        matchedLocation: module.room || 'Banheiro',
+      };
+    }
+  }
+
+  for (const kw of showerKeywords) {
+    if (name.includes(kw) || room.includes(kw)) {
+      return {
+        mandatory: true,
+        reason: 'Ponto de utilização com chuveiro/banheira (NBR 5410 item 5.1.3.2.2.a)',
+        matchedLocation: module.room || 'Chuveiro/Banho',
+      };
+    }
+  }
+
+  // 2. Kitchen / Pantry areas (item 5.1.3.2.2.d)
+  const kitchenKeywords = [
+    'cozinha',
+    'copa',
+    'gourmet',
+    'churrasqueira',
+  ];
+  for (const kw of kitchenKeywords) {
+    if (room.includes(kw) || name.includes(kw)) {
+      return {
+        mandatory: true,
+        reason: 'Cozinha, copa ou área sujeita a lavagem (NBR 5410 item 5.1.3.2.2.d)',
+        matchedLocation: module.room || 'Cozinha',
+      };
+    }
+  }
+
+  // 3. Wet / Laundry / Service / Garage areas (item 5.1.3.2.2.d)
+  const wetAreaKeywords = [
+    'lavanderia',
+    'servico',
+    'garagem',
+    'abrigo',
+  ];
+  const wetEquipmentKeywords = [
+    'torneira eletrica',
+    'maquina de lavar',
+    'lava e seca',
+    'lava loucas',
+    'lava-loucas',
+  ];
+
+  for (const kw of wetAreaKeywords) {
+    if (room.includes(kw) || name.includes(kw)) {
+      return {
+        mandatory: true,
+        reason: 'Área molhada / de serviço sujeita a lavagem (NBR 5410 item 5.1.3.2.2.d)',
+        matchedLocation: module.room || 'Área de Serviço/Lavanderia',
+      };
+    }
+  }
+
+  for (const kw of wetEquipmentKeywords) {
+    if (name.includes(kw) || room.includes(kw)) {
+      return {
+        mandatory: true,
+        reason: 'Equipamento em área molhada (NBR 5410 item 5.1.3.2.2.d)',
+        matchedLocation: module.room || module.name,
+      };
+    }
+  }
+
+  // 4. External areas (item 5.1.3.2.2.b / c)
+  const externalKeywords = [
+    'extern',
+    'jardim',
+    'quintal',
+    'varanda',
+    'sacada',
+    'piscina',
+    'fachada',
+    'pergolado',
+  ];
+  for (const kw of externalKeywords) {
+    if (room.includes(kw) || name.includes(kw)) {
+      return {
+        mandatory: true,
+        reason: 'Ponto externo ou que alimenta área externa (NBR 5410 item 5.1.3.2.2.b/c)',
+        matchedLocation: module.room || 'Área Externa',
+      };
+    }
+  }
+
+  return { mandatory: false };
+}
+
 export function validatePanelNBR5410(config: PanelConfig): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const mainBreaker = config.modules.find((m) => m.category === 'main_breaker');
   const idrs = config.modules.filter((m) => m.category === 'idr');
+  const rcbos = config.modules.filter((m) => m.category === 'rcbo');
   const dpsList = config.modules.filter((m) => m.category === 'dps');
   const breakers = config.modules.filter((m) => m.category === 'breaker');
+  const loadCircuits = config.modules.filter(isLoadCircuit);
+
+  // 1. Tabela 59 NBR 5410 - Reserva de Espaço no QDC
+  const reserveStatus = getTable59ReserveStatus(config);
+  if (reserveStatus.isOverflowing) {
+    issues.push({
+      id: 'qdc-capacity-overflow',
+      severity: 'error',
+      title: 'Capacidade do QDC Excedida',
+      message: `O quadro possui capacidade física para ${reserveStatus.totalSlots} módulos DIN, mas existem ${reserveStatus.occupiedSlots} módulos instalados (${reserveStatus.occupiedSlots - reserveStatus.totalSlots} módulo(s) acima da capacidade). Redimensione o quadro.`,
+    });
+  } else if (reserveStatus.circuitCount > 0 && !reserveStatus.isCompliant) {
+    issues.push({
+      id: 'table-59-insufficient-reserve',
+      severity: 'warning',
+      title: 'Reserva Insuficiente no QDC (NBR 5410 Tabela 59)',
+      message: `Com ${reserveStatus.circuitCount} circuito(s) instalado(s), a NBR 5410 (Tabela 59) exige no mínimo ${reserveStatus.requiredReserve} módulo(s) de reserva para expansões futuras. Espaço livre atual: ${reserveStatus.freeSlots} módulo(s) (Capacidade: ${reserveStatus.totalSlots}, Ocupados: ${reserveStatus.occupiedSlots}).`,
+    });
+  }
 
   if (!mainBreaker) {
     issues.push({
@@ -316,33 +690,68 @@ export function validatePanelNBR5410(config: PanelConfig): ValidationIssue[] {
   }
 
   if (config.groundingSystem === 'TN-C') {
-    if (idrs.length > 0) {
+    if (idrs.length > 0 || rcbos.length > 0) {
+      const firstDr = idrs[0] || rcbos[0];
       issues.push({
-        id: 'tn-c-idr-prohibited',
-        moduleId: idrs[0].id,
+        id: 'tn-c-dr-prohibited',
+        moduleId: firstDr.id,
         severity: 'error',
-        title: 'IDR é PROIBIDO no esquema TN-C (NBR 5410 item 5.1.3.2.2.4)',
+        title: 'Dispositivos DR (IDR / RCBO) são PROIBIDOS no esquema TN-C (NBR 5410 item 5.1.3.2.2.4)',
         message:
-          'No esquema TN-C, as funções de neutro e proteção são combinadas (PEN). O condutor PEN carrega corrente de carga e não pode passar por DR, pois causará desarmes indevidos. Altere para TN-C-S ou remova o IDR.',
+          'No esquema TN-C, as funções de neutro e proteção são combinadas (PEN). O condutor PEN carrega corrente de carga e não pode passar por DR, pois causará desarmes indevidos. Altere para TN-C-S ou remova os IDRs e RCBOs.',
       });
     }
   } else if (config.groundingSystem === 'TT') {
-    if (idrs.length === 0) {
+    const unprotectedInTT = breakers.filter((b) => !b.drProtected);
+    if (idrs.length === 0 && rcbos.length === 0) {
       issues.push({
         id: 'tt-idr-mandatory',
         severity: 'error',
-        title: 'IDR é OBRIGATÓRIO no esquema TT (NBR 5410 item 5.1.3.2.3.1)',
+        title: 'Proteção DR é OBRIGATÓRIA no esquema TT (NBR 5410 item 5.1.3.2.3.1)',
         message:
-          'No esquema TT, as massas são aterradas em eletrodo independente do neutro. A proteção por seccionamento automático exige IDR em todos os circuitos para garantir proteção contra choques.',
+          'No esquema TT, as massas são aterradas em eletrodo independente do neutro. A proteção por seccionamento automático exige IDR setorial ou RCBO (DDR) em todos os circuitos para garantir proteção contra choques.',
+      });
+    } else if (unprotectedInTT.length > 0) {
+      issues.push({
+        id: 'tt-unprotected-circuits',
+        severity: 'error',
+        title: `${unprotectedInTT.length} circuito(s) sem proteção DR no esquema TT`,
+        message:
+          'No esquema TT, todos os circuitos sem exceção devem estar sob IDR setorial ou possuir RCBO (DDR) individual.',
       });
     }
-  } else if (idrs.length === 0) {
+  } else if (idrs.length === 0 && rcbos.length === 0) {
     issues.push({
-      id: 'no-idr',
+      id: 'no-dr',
       severity: 'warning',
-      title: 'Sem Interruptor Diferencial Residual (IDR)',
-      message: 'NBR 5410 torna obrigatório o uso de IDR de alta sensibilidade (≤ 30mA) para áreas molhadas, externas e tomadas.',
+      title: 'Sem Dispositivo Diferencial Residual (IDR / RCBO)',
+      message:
+        'NBR 5410 torna obrigatório o uso de proteção DR de alta sensibilidade (≤ 30mA) para áreas molhadas, externas e tomadas.',
     });
+  }
+
+  // Validação de sobrecorrente em múltiplos IDRs setoriais (NBR 5410)
+  for (const idr of idrs) {
+    const assignedBreakers = breakers.filter((b) => {
+      if (b.idrId) return b.idrId === idr.id;
+      return idrs.length === 1 && b.drProtected;
+    });
+
+    const assignedCurrentSum = +assignedBreakers
+      .reduce((sum, b) => sum + calculateCircuitCurrent(b), 0)
+      .toFixed(1);
+    const assignedRatingsSum = assignedBreakers.reduce((sum, b) => sum + b.ratingAmps, 0);
+
+    const upstreamRating = mainBreaker?.ratingAmps || 63;
+    if (upstreamRating > idr.ratingAmps && assignedCurrentSum > idr.ratingAmps) {
+      issues.push({
+        id: `idr-overload-${idr.id}`,
+        moduleId: idr.id,
+        severity: 'error',
+        title: `${idr.name}: Carga ativa (${assignedCurrentSum}A) excede capacidade do IDR (${idr.ratingAmps}A)`,
+        message: `A soma das cargas ativas dos circuitos atribuídos a este IDR é de ${assignedCurrentSum}A (disjuntores somam ${assignedRatingsSum}A), superando o limite nominal de ${idr.ratingAmps}A sem proteção limitadora a montante (${upstreamRating}A). NBR 5410 exige proteção do IDR contra sobrecorrente.`,
+      });
+    }
   }
 
   if (config.groundingSystem === 'IT') {
@@ -355,21 +764,71 @@ export function validatePanelNBR5410(config: PanelConfig): ValidationIssue[] {
     });
   }
 
+  // 2. Proteção contra Surtos (DPS) e Neutro (NBR 5410 item 6.3.5.2)
+  const isTnC = config.groundingSystem === 'TN-C';
+  const isTnCsWithPenGrounded =
+    config.groundingSystem === 'TN-C-S' && config.penGroundedAtPanel !== false;
+  const neutralDpsExempt = isTnC || isTnCsWithPenGrounded;
+
   const hasNeutralDps = dpsList.some((d) => d.phases === 'N');
   if (dpsList.length === 0) {
-    issues.push({
-      id: 'no-dps',
-      severity: 'warning',
-      title: 'Sem Dispositivo de Proteção contra Surtos (DPS)',
-      message: 'Recomenda-se instalar DPS Classe II nas fases de entrada e no neutro.',
-    });
-  } else if (!hasNeutralDps) {
+    if (neutralDpsExempt) {
+      issues.push({
+        id: 'no-dps',
+        severity: 'warning',
+        title: 'Sem Dispositivo de Proteção contra Surtos (DPS)',
+        message: `Recomenda-se instalar DPS Classe II nas fases de entrada conectadas ao barramento de proteção (PE/PEN). No esquema ${config.groundingSystem}${
+          isTnCsWithPenGrounded ? ' com PEN aterrado no quadro' : ''
+        }, o DPS no neutro é dispensado pela NBR 5410 (item 6.3.5.2.4).`,
+      });
+    } else {
+      issues.push({
+        id: 'no-dps',
+        severity: 'warning',
+        title: 'Sem Dispositivo de Proteção contra Surtos (DPS)',
+        message: 'Recomenda-se instalar DPS Classe II nas fases de entrada e no neutro conforme NBR 5410.',
+      });
+    }
+  } else if (!hasNeutralDps && !neutralDpsExempt) {
     issues.push({
       id: 'no-neutral-dps',
       severity: 'warning',
       title: 'Falta DPS para o Neutro',
-      message: 'Adicione um módulo DPS conectado ao Neutro para proteção completa em esquemas com IDR.',
+      message: `No esquema ${config.groundingSystem}, os condutores de neutro e proteção são separados. Conforme a NBR 5410 (item 6.3.5.2), adicione um módulo DPS conectado entre Neutro e Terra para proteção completa contra sobretensões transitórias.`,
     });
+  } else if (hasNeutralDps && isTnC) {
+    issues.push({
+      id: 'tn-c-neutral-dps-redundant',
+      severity: 'info',
+      title: 'DPS no Neutro dispensável em TN-C',
+      message: 'No esquema TN-C, as funções de neutro e proteção são combinadas no condutor PEN diretamente aterrado. O DPS no neutro é dispensado pela NBR 5410.',
+    });
+  }
+
+  // 3. Validação de DR obrigatório por tipo/ambiente (NBR 5410 item 5.1.3.2.2)
+  if (config.groundingSystem !== 'TN-C') {
+    for (const b of breakers) {
+      const drReq = checkDrRequirement(b);
+      if (drReq.mandatory && !b.drProtected) {
+        issues.push({
+          id: `missing-dr-${b.id}`,
+          moduleId: b.id,
+          severity: 'error',
+          title: `${b.name}: Proteção DR Obrigatória Ausente (NBR 5410)`,
+          message: `Circuito C${b.circuitNumber || '?'} (${b.name}) no ambiente "${b.room || drReq.matchedLocation || 'Área molhada'}" exige proteção por dispositivo DR (IDR ≤ 30mA) conforme NBR 5410 item 5.1.3.2.2 (${drReq.reason}). Marque a proteção DR neste circuito.`,
+        });
+      }
+    }
+  } else {
+    const wetCircuits = breakers.filter((b) => checkDrRequirement(b).mandatory);
+    if (wetCircuits.length > 0) {
+      issues.push({
+        id: 'tn-c-wet-circuits-dr-conflict',
+        severity: 'warning',
+        title: 'Circuitos em Áreas Molhadas no Esquema TN-C',
+        message: `Existem circuitos em áreas molhadas (${wetCircuits.map((c) => c.name).join(', ')}) que exigem DR pela NBR 5410 item 5.1.3.2.2. Como o esquema TN-C proíbe o uso de DR no condutor PEN (item 5.1.3.2.2.4), converta o quadro para TN-C-S para permitir a proteção por IDR.`,
+      });
+    }
   }
 
   const balance = calculatePhaseBalance(config);
@@ -405,10 +864,18 @@ export function validatePanelNBR5410(config: PanelConfig): ValidationIssue[] {
     }
   }
 
-  for (const b of breakers) {
+  for (const b of loadCircuits) {
     const current = calculateCircuitCurrent(b);
+    const fca = b.groupingFactor && b.groupingFactor > 0 ? b.groupingFactor : 1.0;
     const wireRow = WIRE_AMPACITY_TABLE.find((w) => w.gaugeMm2 === b.wireGaugeMm2);
-    const wireMaxAmps = wireRow ? (b.poles >= 3 ? wireRow.maxAmps3P : wireRow.maxAmps2P) : 24;
+    const baseWireMaxAmps = wireRow ? (b.poles >= 3 ? wireRow.maxAmps3P : wireRow.maxAmps2P) : 24;
+    const effectiveWireMaxAmps = +(baseWireMaxAmps * fca).toFixed(1);
+    const vDrop = calculateVoltageDrop(b);
+    const recWire = getRecommendedWireGauge(current, b.ratingAmps, b.circuitType, b.poles, {
+      lengthMeters: b.lengthMeters,
+      voltage: b.voltage,
+      groupingFactor: fca,
+    });
 
     if (current > b.ratingAmps) {
       issues.push({
@@ -416,17 +883,29 @@ export function validatePanelNBR5410(config: PanelConfig): ValidationIssue[] {
         moduleId: b.id,
         severity: 'error',
         title: `${b.name}: Corrente (${current}A) maior que o Disjuntor (${b.ratingAmps}A)`,
-        message: `O circuito consome ${b.powerWatts}W (${current}A em ${b.voltage}V), mas o disjuntor é de ${b.ratingAmps}A. Sugestão: C${getRecommendedBreakerRating(current, b.circuitType)}.`,
+        message: `O circuito consome ${b.powerWatts}W (${current}A em ${b.voltage}V, cos φ ${getCircuitPowerFactor(b)}), mas o disjuntor é de ${b.ratingAmps}A. Sugestão: C${getRecommendedBreakerRating(current, b.circuitType)}.`,
       });
     }
 
-    if (b.ratingAmps > wireMaxAmps) {
+    if (b.ratingAmps > effectiveWireMaxAmps) {
+      const isFcaCulprit = b.ratingAmps <= baseWireMaxAmps && fca < 1.0;
       issues.push({
         id: `wire-undersized-${b.id}`,
         moduleId: b.id,
         severity: 'error',
-        title: `${b.name}: Cabo ${b.wireGaugeMm2}mm² subdimensionado para Disjuntor ${b.ratingAmps}A`,
-        message: `Cabo ${b.wireGaugeMm2}mm² suporta até ${wireMaxAmps}A, inferior ao disjuntor de ${b.ratingAmps}A. Use cabo de ${getRecommendedWireGauge(current, b.ratingAmps, b.circuitType, b.poles)}mm².`,
+        title: `${b.name}: Cabo ${b.wireGaugeMm2}mm² subdimensionado para Disjuntor ${b.ratingAmps}A${isFcaCulprit ? ` (FCA ${fca})` : ''}`,
+        message: `Cabo ${b.wireGaugeMm2}mm² suporta até ${effectiveWireMaxAmps}A com fator de agrupamento FCA ${fca} (tabela base ${baseWireMaxAmps}A), inferior ao disjuntor de ${b.ratingAmps}A. Recomendado: cabo de ${recWire}mm².`,
+      });
+    }
+
+    if (vDrop.isExcessive) {
+      const recDrop = calculateVoltageDrop(b, recWire);
+      issues.push({
+        id: `voltage-drop-${b.id}`,
+        moduleId: b.id,
+        severity: 'error',
+        title: `${b.name}: Queda de tensão excessiva (${vDrop.dropPercent}% > 4.0%)`,
+        message: `Com comprimento L = ${b.lengthMeters ?? 15}m e cabo ${b.wireGaugeMm2}mm², a queda de tensão é de ${vDrop.dropPercent}% (${vDrop.dropVolts}V), superando o limite normativo de 4% da NBR 5410. Sugestão: aumente para cabo de ${recWire}mm² (queda de ${recDrop.dropPercent}%).`,
       });
     }
   }
@@ -437,7 +916,7 @@ export function validatePanelNBR5410(config: PanelConfig): ValidationIssue[] {
 export function autoBalancePhases(config: PanelConfig): PanelModule[] {
   if (config.supplyType === 'mono') {
     return config.modules.map((m) =>
-      m.category === 'breaker' ? { ...m, phases: 'R' } : m
+      isLoadCircuit(m) ? { ...m, phases: 'R' } : m
     );
   }
 
@@ -448,14 +927,14 @@ export function autoBalancePhases(config: PanelConfig): PanelModule[] {
 
   const loads: Record<'R' | 'S' | 'T', number> = { R: 0, S: 0, T: 0 };
 
-  const breakers = config.modules
-    .filter((m) => m.category === 'breaker')
+  const loadCircuits = config.modules
+    .filter(isLoadCircuit)
     .sort((a, b) => b.powerWatts - a.powerWatts);
 
   const phaseMap = new Map<string, PhaseAssignment>();
 
-  for (const b of breakers) {
-    if (b.poles === 3) {
+  for (const b of loadCircuits) {
+    if (b.poles >= 3) {
       phaseMap.set(b.id, 'RST');
       loads.R += b.powerWatts / 3;
       loads.S += b.powerWatts / 3;
@@ -525,7 +1004,7 @@ export function previewPhaseBalanceChanges(config: PanelConfig): PhaseBalancePre
   for (let i = 0; i < config.modules.length; i++) {
     const oldMod = config.modules[i];
     const newMod = proposedModules[i];
-    if (oldMod.category === 'breaker' && oldMod.phases !== newMod.phases) {
+    if (isLoadCircuit(oldMod) && oldMod.phases !== newMod.phases) {
       changes.push({
         moduleId: oldMod.id,
         circuitNumber: oldMod.circuitNumber,
@@ -546,6 +1025,125 @@ export function previewPhaseBalanceChanges(config: PanelConfig): PhaseBalancePre
     proposedModules,
   };
 }
+
+export interface BreakerRecalculateChangeItem {
+  moduleId: string;
+  circuitNumber?: number;
+  name: string;
+  room?: string;
+  circuitType: PanelModule['circuitType'];
+  poles: number;
+  voltage: number;
+  powerWatts: number;
+  currentAmps: number;
+  fromRatingAmps: number;
+  toRatingAmps: number;
+  fromWireGaugeMm2: number;
+  toWireGaugeMm2: number;
+  curve: CurveType;
+  reason: string;
+  isOverloaded: boolean;
+  hasChanged: boolean;
+  breakerChanged: boolean;
+  wireChanged: boolean;
+}
+
+export interface BreakerRecalculatePreview {
+  totalCircuits: number;
+  changedCount: number;
+  unchangedCount: number;
+  overloadedCount: number;
+  changes: BreakerRecalculateChangeItem[];
+  proposedModules: PanelModule[];
+}
+
+export function previewBreakerRecalculation(config: PanelConfig): BreakerRecalculatePreview {
+  const changes: BreakerRecalculateChangeItem[] = [];
+  const proposedModules = config.modules.map((m) => {
+    if (!isLoadCircuit(m)) return m;
+
+    const currentAmps = calculateCircuitCurrent(m);
+    let toRatingAmps: number;
+    if (m.powerWatts > 0) {
+      toRatingAmps = getRecommendedBreakerRating(currentAmps, m.circuitType);
+    } else {
+      const minRating = m.circuitType === 'lighting' ? 10 : 16;
+      toRatingAmps = Math.max(m.ratingAmps, minRating);
+    }
+
+    const toWireGaugeMm2 = getRecommendedWireGauge(
+      currentAmps,
+      toRatingAmps,
+      m.circuitType,
+      m.poles,
+      {
+        lengthMeters: m.lengthMeters,
+        voltage: m.voltage,
+        groupingFactor: m.groupingFactor,
+      }
+    );
+
+    const breakerChanged = m.ratingAmps !== toRatingAmps;
+    const wireChanged = m.wireGaugeMm2 !== toWireGaugeMm2;
+    const hasChanged = breakerChanged || wireChanged;
+    const isOverloaded = currentAmps > m.ratingAmps;
+
+    let reason = '';
+    if (isOverloaded) {
+      reason = `Sobrecarga crítica: corrente de projeto (${currentAmps}A) excede a capacidade do disjuntor atual (${m.ratingAmps}A). Ajustado para ${toRatingAmps}A para evitar desarmes e aquecimento.`;
+    } else if (breakerChanged && toRatingAmps > m.ratingAmps) {
+      reason = `Critério normativo NBR 5410: margem de 10% sobre corrente de projeto (${(currentAmps * 1.1).toFixed(1)}A) requer disjuntor de ${toRatingAmps}A.`;
+    } else if (breakerChanged && toRatingAmps < m.ratingAmps) {
+      reason = `Otimização de proteção: disjuntor superdimensionado reduzido de ${m.ratingAmps}A para ${toRatingAmps}A para melhor sensibilidade térmica.`;
+    } else if (wireChanged) {
+      reason = `Disjuntor mantido em ${m.ratingAmps}A. Cabo ajustado de ${m.wireGaugeMm2}mm² para ${toWireGaugeMm2}mm² para garantir capacidade de condução (Iz ≥ In).`;
+    } else {
+      reason = `Em perfeita conformidade: Ib (${currentAmps}A) ≤ In (${m.ratingAmps}A) ≤ Iz (${toWireGaugeMm2}mm²).`;
+    }
+
+    changes.push({
+      moduleId: m.id,
+      circuitNumber: m.circuitNumber,
+      name: m.name,
+      room: m.room,
+      circuitType: m.circuitType,
+      poles: m.poles,
+      voltage: m.voltage,
+      powerWatts: m.powerWatts,
+      currentAmps,
+      fromRatingAmps: m.ratingAmps,
+      toRatingAmps,
+      fromWireGaugeMm2: m.wireGaugeMm2,
+      toWireGaugeMm2,
+      curve: m.curve || 'C',
+      reason,
+      isOverloaded,
+      hasChanged,
+      breakerChanged,
+      wireChanged,
+    });
+
+    return {
+      ...m,
+      ratingAmps: toRatingAmps,
+      wireGaugeMm2: toWireGaugeMm2,
+    };
+  });
+
+  const changedCount = changes.filter((c) => c.hasChanged).length;
+  const unchangedCount = changes.filter((c) => !c.hasChanged).length;
+  const overloadedCount = changes.filter((c) => c.isOverloaded).length;
+
+  return {
+    totalCircuits: changes.length,
+    changedCount,
+    unchangedCount,
+    overloadedCount,
+    changes,
+    proposedModules,
+  };
+}
+
 
 export function getWireColorHex(
   wireType: WireType,
@@ -585,13 +1183,17 @@ export function getPhaseToWireType(phaseChar: string): WireType {
 export function generateAutomaticWires(config: PanelConfig): WireConnection[] {
   const wires: WireConnection[] = [];
   const mainBreaker = config.modules.find((m) => m.category === 'main_breaker');
-  const idr = config.modules.find((m) => m.category === 'idr');
+  const idrs = config.modules
+    .filter((m) => m.category === 'idr')
+    .sort((a, b) => a.position - b.position);
+  const idr = idrs[0];
   const dpsModules = config.modules
     .filter((m) => m.category === 'dps')
     .sort((a, b) => a.position - b.position);
-  const breakers = config.modules
-    .filter((m) => m.category === 'breaker')
+  const loadCircuits = config.modules
+    .filter(isLoadCircuit)
     .sort((a, b) => a.position - b.position);
+  const breakers = loadCircuits;
 
   const phaseTypes: WireType[] =
     config.supplyType === 'mono'
@@ -600,7 +1202,7 @@ export function generateAutomaticWires(config: PanelConfig): WireConnection[] {
       ? ['phase_r', 'phase_s']
       : ['phase_r', 'phase_s', 'phase_t'];
 
-  // 1. Incoming Supply (`supply_in`) -> TOP of Main Breaker (Phases) & TOP of IDR (Neutral)
+  // 1. Incoming Supply (`supply_in`) -> TOP of Main Breaker (Phases) & TOP of IDRs (Neutral)
   if (mainBreaker) {
     phaseTypes.forEach((wt, idx) => {
       if (idx < mainBreaker.poles) {
@@ -618,19 +1220,21 @@ export function generateAutomaticWires(config: PanelConfig): WireConnection[] {
     });
   }
 
-  if (idr) {
-    const neutralPole = idr.poles - 1;
+  // Supply neutral to each IDR top neutral terminal
+  idrs.forEach((idrMod, idrIdx) => {
+    const neutralPole = idrMod.poles - 1;
     wires.push({
-      id: `auto-supply-idr-n`,
+      id: `auto-supply-idr-${idrMod.id}-n`,
       fromId: 'supply_in',
       fromPort: `neutral`,
-      toId: idr.id,
+      toId: idrMod.id,
       toPort: `top_${neutralPole}`,
       wireType: 'neutral',
       gaugeMm2: 16,
+      label: idrs.length > 1 ? `N ${idrMod.name}` : undefined,
       isAutoGenerated: true,
     });
-  }
+  });
 
   // 1b. TN-C-S Grounding: Equipotential bonding bridge from supply PEN to PE ground bar
   if (config.groundingSystem === 'TN-C-S') {
@@ -647,38 +1251,50 @@ export function generateAutomaticWires(config: PanelConfig): WireConnection[] {
     });
   }
 
-  // 2. BOTTOM of Main Breaker -> TOP of IDR (Phases R, S, T)
-  if (mainBreaker && idr) {
-    phaseTypes.forEach((wt, idx) => {
-      if (idx < mainBreaker.poles && idx < idr.poles - 1) {
+  // 2. BOTTOM of Main Breaker -> TOP of each IDR (Phases R, S, T) & IDR Neutral Out -> Neutral Bar
+  if (mainBreaker) {
+    idrs.forEach((idrMod, idrIdx) => {
+      const idrPhaseChars = (idrMod.phases || 'RST').split('');
+      const phasePolesCount =
+        idrMod.poles >= 4
+          ? Math.min(3, mainBreaker.poles)
+          : Math.min(idrMod.poles - 1, mainBreaker.poles);
+
+      for (let pIdx = 0; pIdx < phasePolesCount; pIdx++) {
+        const pChar = idrPhaseChars[pIdx] || (pIdx === 0 ? 'R' : pIdx === 1 ? 'S' : 'T');
+        const mainPortIdx = pChar === 'R' ? 0 : pChar === 'S' ? 1 : pChar === 'T' ? 2 : pIdx;
+        const wt = getPhaseToWireType(pChar);
+
         wires.push({
-          id: `auto-main-idr-${idx}`,
+          id: `auto-main-idr-${idrMod.id}-${pIdx}`,
           fromId: mainBreaker.id,
-          fromPort: `bottom_${idx}`,
-          toId: idr.id,
-          toPort: `top_${idx}`,
+          fromPort: `bottom_${mainPortIdx}`,
+          toId: idrMod.id,
+          toPort: `top_${pIdx}`,
           wireType: wt,
           gaugeMm2: 10,
           isAutoGenerated: true,
         });
       }
-    });
-    // Neutral out from IDR bottom last pole -> Neutral bar
-    const neutralPole = idr.poles - 1;
-    wires.push({
-      id: `auto-idr-neutral-out`,
-      fromId: idr.id,
-      fromPort: `bottom_${neutralPole}`,
-      toId: 'neutral_bar',
-      toPort: `term_0`,
-      wireType: 'neutral',
-      gaugeMm2: 10,
-      isAutoGenerated: true,
+
+      // Neutral out from IDR bottom last pole -> Neutral bar
+      const neutralPole = idrMod.poles - 1;
+      wires.push({
+        id: `auto-idr-neutral-out-${idrMod.id}`,
+        fromId: idrMod.id,
+        fromPort: `bottom_${neutralPole}`,
+        toId: 'neutral_bar',
+        toPort: `term_${idrIdx}`,
+        wireType: 'neutral',
+        gaugeMm2: 10,
+        label: idrs.length > 1 ? `N ${idrMod.name}` : undefined,
+        isAutoGenerated: true,
+      });
     });
   }
 
-  // 3. Feed from IDR (or Main Breaker) BOTTOM ports -> Fishbone Busbar or Comb Busbars
-  const sourceModule = idr || mainBreaker;
+  // 3. Feed from first IDR (or Main Breaker) BOTTOM ports -> Fishbone Busbar or Comb Busbars
+  const sourceModule = idrs[0] || mainBreaker;
   if (sourceModule) {
     if (config.topology === 'fishbone') {
       phaseTypes.forEach((wt, idx) => {
@@ -701,8 +1317,8 @@ export function generateAutomaticWires(config: PanelConfig): WireConnection[] {
         config.horizontalRows - 1
       );
       targetRails.forEach((railId) => {
-        const hasBreakersOnRail = breakers.some((b) => b.railId === railId);
-        if (!hasBreakersOnRail) return;
+        const hasCircuitsOnRail = loadCircuits.some((b) => b.railId === railId);
+        if (!hasCircuitsOnRail) return;
         phaseTypes.forEach((wt, pIdx) => {
           if (pIdx < sourceModule.poles) {
             wires.push({
@@ -729,11 +1345,11 @@ export function generateAutomaticWires(config: PanelConfig): WireConnection[] {
       : getPhaseToWireType(dps.phases[0] || 'R');
 
     if (isNeutralDps) {
-      if (idr) {
-        const neutralPole = idr.poles - 1;
+      if (idrs.length > 0) {
+        const neutralPole = idrs[0].poles - 1;
         wires.push({
           id: `auto-dps-in-${dps.id}`,
-          fromId: idr.id,
+          fromId: idrs[0].id,
           fromPort: `top_${neutralPole}`,
           toId: dps.id,
           toPort: 'top_0',
@@ -779,11 +1395,11 @@ export function generateAutomaticWires(config: PanelConfig): WireConnection[] {
     });
   });
 
-  // 5. Circuit Breaker outgoing Load Wires + Neutral & Ground bar terminal stubs
-  const leftBreakers = breakers.filter((b) => b.railId === 'left_rail');
-  const rightBreakers = breakers.filter((b) => b.railId !== 'left_rail');
+  // 5. Circuit Breaker & RCBO outgoing Load Wires + Neutral & Ground bar terminal stubs
+  const leftCircuits = loadCircuits.filter((b) => b.railId === 'left_rail');
+  const rightCircuits = loadCircuits.filter((b) => b.railId !== 'left_rail');
 
-  leftBreakers.forEach((b, bIdx) => {
+  leftCircuits.forEach((b, bIdx) => {
     for (let p = 0; p < b.poles; p++) {
       const phChar = b.phases[p] || b.phases[0] || 'R';
       const wt = getPhaseToWireType(phChar);
@@ -801,7 +1417,7 @@ export function generateAutomaticWires(config: PanelConfig): WireConnection[] {
     }
   });
 
-  rightBreakers.forEach((b, bIdx) => {
+  rightCircuits.forEach((b, bIdx) => {
     for (let p = 0; p < b.poles; p++) {
       const phChar = b.phases[p] || b.phases[0] || 'R';
       const wt = getPhaseToWireType(phChar);
@@ -819,9 +1435,9 @@ export function generateAutomaticWires(config: PanelConfig): WireConnection[] {
     }
   });
 
-  breakers.forEach((b, bIdx) => {
+  loadCircuits.forEach((b, bIdx) => {
     // Unique terminal indices that never collide with IDR (term_0) or DPS (term_0..dpsCount-1)
-    const neutralTermIndex = bIdx + 1;
+    const neutralTermIndex = bIdx + idrs.length;
     const groundTermIndex = bIdx + dpsModules.length;
 
     if (b.poles === 1 || b.voltage === 127) {
@@ -938,7 +1554,7 @@ export function generateBillOfMaterials(config: PanelConfig): BomItem[] {
 
   for (const m of config.modules) {
     if (m.category === 'main_breaker') {
-      const poleLabel = m.poles === 1 ? 'Monopolar' : m.poles === 2 ? 'Bipolar' : 'Tripolar';
+      const poleLabel = m.poles === 1 ? 'Monopolar' : m.poles === 2 ? 'Bipolar' : m.poles === 3 ? 'Tripolar' : 'Tetrapolar';
       const key = `main-${m.poles}-${m.ratingAmps}-${m.curve || 'C'}`;
       grouped.set(key, {
         cat: 'Proteção e Entrada',
@@ -947,11 +1563,20 @@ export function generateBillOfMaterials(config: PanelConfig): BomItem[] {
         count: (grouped.get(key)?.count || 0) + 1,
       });
     } else if (m.category === 'idr') {
-      const key = `idr-${m.poles}-${m.ratingAmps}-${m.sensitivityMa || 30}`;
+      const key = `idr-${m.name}-${m.poles}-${m.ratingAmps}-${m.sensitivityMa || 30}`;
       grouped.set(key, {
-        cat: 'Proteção e Entrada',
-        item: `Interruptor Diferencial Residual IDR ${m.poles}P ${m.ratingAmps}A`,
+        cat: 'Proteção e IDRs Setoriais',
+        item: `IDR Setorial (${m.name}) ${m.poles}P ${m.ratingAmps}A`,
         spec: `Sensibilidade ${m.sensitivityMa || 30}mA Classe AC`,
+        count: (grouped.get(key)?.count || 0) + 1,
+      });
+    } else if (m.category === 'rcbo') {
+      const poleLabel = m.poles === 1 ? '1P+N' : m.poles === 2 ? '2P' : m.poles === 3 ? '3P' : '4P (3P+N)';
+      const key = `rcbo-${m.poles}-${m.ratingAmps}-${m.curve || 'C'}-${m.sensitivityMa || 30}`;
+      grouped.set(key, {
+        cat: 'Disjuntores DR (RCBO / DDR)',
+        item: `Disjuntor DR (RCBO/DDR) ${poleLabel} ${m.ratingAmps}A`,
+        spec: `Curva ${m.curve || 'C'} • Sensibilidade ${m.sensitivityMa || 30}mA (NBR NM 61009-1)`,
         count: (grouped.get(key)?.count || 0) + 1,
       });
     } else if (m.category === 'dps') {
@@ -963,7 +1588,7 @@ export function generateBillOfMaterials(config: PanelConfig): BomItem[] {
         count: (grouped.get(key)?.count || 0) + 1,
       });
     } else {
-      const poleLabel = m.poles === 1 ? '1P' : m.poles === 2 ? '2P' : '3P';
+      const poleLabel = m.poles === 1 ? '1P' : m.poles === 2 ? '2P' : m.poles === 3 ? '3P' : `${m.poles}P`;
       const key = `brk-${m.poles}-${m.ratingAmps}-${m.curve || 'C'}`;
       grouped.set(key, {
         cat: 'Disjuntores dos Circuitos',
@@ -994,7 +1619,7 @@ export function generateBillOfMaterials(config: PanelConfig): BomItem[] {
     cableEstimates.set(4, (cableEstimates.get(4) || 0) + 2); // Cabos DPS
   }
   for (const m of config.modules) {
-    if (m.category === 'breaker') {
+    if (isLoadCircuit(m)) {
       const meters = 1.5 * (m.poles + (m.poles === 1 ? 2 : 1));
       cableEstimates.set(m.wireGaugeMm2, (cableEstimates.get(m.wireGaugeMm2) || 0) + meters);
     }
@@ -1011,7 +1636,7 @@ export function generateBillOfMaterials(config: PanelConfig): BomItem[] {
 
   const gaugeCounts = new Map<number, number>();
   for (const m of config.modules) {
-    if (m.category === 'breaker') {
+    if (isLoadCircuit(m)) {
       const count = m.poles + (m.poles === 1 ? 2 : 1);
       gaugeCounts.set(m.wireGaugeMm2, (gaugeCounts.get(m.wireGaugeMm2) || 0) + count * 2);
     }
