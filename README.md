@@ -43,27 +43,62 @@ A aplicação está disponível publicamente e pronta para uso em:
   - A geração automática (**Auto-Fios**) preserva 100% dos fios manuais inseridos pelo usuário.
   - Exclusão intuitiva de fios através de clique direto com hit-target ampliado.
 
-### 4. Cálculos Elétricos e Balanceamento de Cargas
-- **Cálculo de Correntes**:
-  - Circuitos monopolares: $I = \frac{P}{V_{FN}}$
-  - Circuitos bipolares: $I = \frac{P}{V_{FF}}$
-  - Circuitos tripolares: $I = \frac{P}{\sqrt{3} \times V_{FF}}$
-- **Algoritmo de Balanceamento de Fases**:
-  - Redistribuição balanceada minimizando o desbalanceamento percentual conforme NBR 5410.
-  - Modal explicativo exibindo o passo a passo da redistribuição, corrente por fase e circuitos alocados.
-  - Destaque automático de fase sobrecarregada em relação ao disjuntor geral.
+### 4. Cálculos Elétricos e Dimensionamento Rigoroso (NBR 5410)
+- **Cálculo de Correntes e Fator de Potência ($\cos \varphi$)**:
+  - Circuitos monopolares: $I = \frac{P}{V_{FN} \times \cos \varphi}$
+  - Circuitos bipolares: $I = \frac{P}{V_{FF} \times \cos \varphi}$
+  - Circuitos tripolares/tetrapolares: $I = \frac{P}{\sqrt{3} \times V_{FF} \times \cos \varphi}$
+  - Detecção inteligente de cargas indutivas (motores, bombas, ar-condicionado) com $\cos \varphi = 0,85$ padrão.
+- **Fatores de Correção por Agrupamento (FCA — Tabela 42 NBR 5410)**:
+  - Aplicação automática de derating térmico para cabos em eletroduto (de 1 a $\ge 20$ circuitos agrupados, FCA de 1,00 a 0,38).
+- **Critério de Queda de Tensão Máxima ($\Delta V \le 4,0\%$)**:
+  - Cálculo contínuo baseado na resistividade do cobre a 20°C ($\rho = 0,01724\,\Omega\cdot\text{mm}^2/\text{m}$) e comprimento $L$ até a carga:
+    - Monofásico / Bifásico: $\Delta V = \frac{2 \times \rho \times L \times I}{S}$
+    - Trifásico equilibrado: $\Delta V = \frac{\sqrt{3} \times \rho \times L \times I}{S}$
+- **Espaço de Reserva Obrigatório no QDC (Tabela 59 NBR 5410)**:
+  - Validação em tempo real da capacidade do quadro:
+    - Até 6 circuitos: reserva mínima de 2 módulos
+    - De 7 a 12 circuitos: reserva mínima de 3 módulos
+    - De 13 a 30 circuitos: reserva mínima de 4 módulos
+    - Mais de 30 circuitos: reserva mínima de $0,15 \times N$ módulos
+- **Proteção DR Obrigatória (item 5.1.3.2.2)**:
+  - Detecção automática de pontos que exigem IDR $\le 30\text{mA}$ (banheiros, chuveiros, cozinhas, lavanderias, garagens e tomadas externas).
+  - Suporte a IDRs setoriais com alerta de sobrecarga ($I_{\text{total}} > I_{n\,\text{IDR}}$).
+  - Verificação de conexão e aterramento do condutor PEN no QDC para esquemas TN-C-S.
+- **Recálculo Inteligente de Disjuntores e Cabos**:
+  - Ferramenta com modal comparativo de prévia (*diff*) que dimensiona disjuntores e bitolas de condutores segundo o cruzamento entre ampacidade, agrupamento e queda de tensão.
 
-### 5. Proteção Padronizada e Limpa (Sem Marcas Comerciais)
+### 5. Disjuntores Diferenciais Residuais (RCBO / DDR)
+- Módulos híbridos compactos que integram proteção contra sobrecorrentes (disjuntor termomagnético) e proteção contra choques e fugas de corrente (diferencial residual de 30mA).
+- Suporte a modelos monopolares, bipolares e tripolares/tetrapolares em curvas B, C e D.
+- Simulação funcional com botão de teste ("T") operacional no simulador interativo.
+
+### 6. Diagrama Unifilar Interativo (Single-Line Diagram)
+- **Visualização Técnica Especializada**:
+  - Geração automática e dinâmica do unifilar a partir da configuração do quadro e circuitos cadastrados.
+  - Representação gráfica de condutores de alimentação (fases R, S, T, neutro e PE), proteção geral, DPS e ramificações.
+  - Destaque claro de IDRs setoriais e circuitos protegidos por RCBO.
+- **Dois Modos Visuais**:
+  - **Engenharia Técnico** (fundo branco de alto contraste para plotagem e documentação).
+  - **Blueprint Clássico** (estilo prancha azul de engenharia).
+- **Ferramentas de Navegação e Apresentação**:
+  - Zoom dinâmico ($0,5\times$ a $2,5\times$), notas técnicas automáticas da NBR 5410 e legenda de condutores/símbolos.
+  - Carimbo técnico de projeto de engenharia com dados da instalação, tensão, esquema de aterramento e capacidade.
+- **Exportação Vetorial e Documento PDF**:
+  - Download em formato **.SVG** vetorial puro para edição em CAD/Inkscape/Illustrator.
+  - Exportação direta para **.PDF** técnico de engenharia (formatos A3 ou A4 em orientação paisagem) via renderização vetorial com `jspdf` e `svg2pdf.js`.
+
+### 7. Proteção Padronizada e Limpa (Sem Marcas Comerciais)
 - **DPS Unificado**: Módulo Classe II (275V, 20kA) padronizado em invólucro vermelho para fases e neutro.
-- **Design Neutro**: Nenhuma menção a marcas específicas (Steck, WEG, Clamper, etc.), preservando foco puramente normativo e técnico.
-- **Legibilidade Total**: Identificação dos circuitos com número (`C1`, `C2`...) e nome acomodados com alto contraste dentro da face do componente ou nas calhas, sem sobreposições.
+- **Design Neutro**: Nenhuma menção a marcas comerciais específicas, preservando foco puramente normativo e técnico.
+- **Legibilidade Total**: Identificação dos circuitos com número (`C1`, `C2`...) e identificador visual acomodados com alto contraste.
 
-### 6. Relatórios, Documentação e Exportação
-- **Diagrama em Vetor (.SVG)**: Download em alta resolução pronto para impressão e plotagem.
-- **Quadro de Cargas Interativo**: Planilha dinâmica com edição em tempo real de potência, tensão, curva e bitola.
-- **Lista de Materiais (BOM)**: Especificação completa de disjuntores, barramentos, DPS, cabos internos por bitola ($mm^2$) e componentes do sistema de aterramento selecionado.
-- **Folha de Etiquetas**: Etiquetas padronizadas DIN para recorte e aplicação na tampa/painel físico.
-- **Salvar e Carregar Projeto (.JSON)**: Importação com validação de esquema e sanitização para prevenir erros.
+### 8. Relatórios, Documentação e Exportação
+- **Diagrama do Quadro em Vetor (.SVG)**: Download do painel físico montado em alta resolução.
+- **Quadro de Cargas Interativo**: Planilha dinâmica com edição em tempo real de potência, tensão, curva, bitola, agrupamento e queda de tensão.
+- **Lista de Materiais (BOM)**: Especificação completa de disjuntores, DDRs, barramentos, DPS, cabos por bitola ($mm^2$) e componentes do aterramento.
+- **Folha de Etiquetas**: Etiquetas padronizadas DIN para recorte e identificação frontal dos circuitos.
+- **Salvar e Carregar Projeto (.JSON)**: Importação e exportação completas com validação de esquema.
 
 ---
 
@@ -83,10 +118,13 @@ cd energy-panel
 # 2. Instalar as dependências
 npm install
 
-# 3. Executar o servidor de desenvolvimento
+# 3. Executar os testes automatizados da NBR 5410
+npm test
+
+# 4. Executar o servidor de desenvolvimento
 npm run dev
 
-# 4. Gerar build estático para produção
+# 5. Gerar build estático para produção
 npm run build
 ```
 
@@ -106,11 +144,15 @@ Qualquer commit enviado para a branch `main` dispara automaticamente a compilaç
 - **Tailwind CSS** (Estilização moderna e responsiva com suporte a impressão `@media print`)
 - **Lucide React** (Ícones técnicos de engenharia)
 - **Vite** (Build tool e empacotamento estático ultra-rápido)
+- **jsPDF** & **svg2pdf.js** (Geração e exportação vetorial de diagramas técnicos em PDF A3/A4)
+- **Vitest** (Suíte de testes automatizados com cobertura completa das regras elétricas NBR 5410)
 
 ---
 
 ## 📜 Normas de Referência
-- **ABNT NBR 5410**: Instalações elétricas de baixa tensão.
+- **ABNT NBR 5410**: Instalações elétricas de baixa tensão (Tabelas 36, 42 e 59; critérios de proteção contra choques e sobrecorrentes).
 - **ABNT NBR IEC 60947-2 / NBR NM 60898**: Disjuntores para proteção contra sobrecorrentes.
 - **ABNT NBR IEC 61643-1**: Dispositivos de proteção contra surtos (DPS) conectados a sistemas elétricos de baixa tensão.
-- **ABNT NBR NM 61008 / NBR NM 61009**: Dispositivos a corrente diferencial-residual (IDR).
+- **ABNT NBR NM 61008**: Interruptores a corrente diferencial-residual sem proteção contra sobrecorrente (IDR).
+- **ABNT NBR NM 61009**: Disjuntores a corrente diferencial-residual com proteção contra sobrecorrente incorporada (DDR / RCBO).
+
