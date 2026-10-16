@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronRight,
   Trash2,
+  X,
 } from 'lucide-react';
 import { PanelConfig, WireType } from '../types/panel';
 
@@ -490,6 +491,7 @@ interface CatalogSidebarProps {
   onSelectWireType: (wt: WireType) => void;
   activeWireGauge: number;
   onSelectWireGauge: (g: number) => void;
+  onClose?: () => void;
 }
 
 export const CatalogSidebar: React.FC<CatalogSidebarProps> = ({
@@ -504,6 +506,7 @@ export const CatalogSidebar: React.FC<CatalogSidebarProps> = ({
   onSelectWireType,
   activeWireGauge,
   onSelectWireGauge,
+  onClose,
 }) => {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     protection: true,
@@ -518,7 +521,24 @@ export const CatalogSidebar: React.FC<CatalogSidebarProps> = ({
   };
 
   return (
-    <aside className="w-80 bg-slate-900 border-r border-slate-800 flex flex-col h-full overflow-y-auto select-none">
+    <aside className="w-full lg:w-80 bg-slate-900 border-r border-slate-800 flex flex-col h-full overflow-y-auto select-none">
+      {/* Mobile / Modal Close Header */}
+      {onClose && (
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-950/90 sticky top-0 z-20 backdrop-blur">
+          <div className="flex items-center gap-2 text-sm font-bold text-slate-200">
+            <Sliders className="w-4 h-4 text-amber-400" />
+            <span>Catálogo e Configurações</span>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Fechar catálogo"
+            className="w-10 h-10 min-w-[40px] min-h-[40px] rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition flex items-center justify-center active:scale-95"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      )}
+
       {/* Section 1: Panel Architecture & Topology */}
       <div className="p-4 border-b border-slate-800 space-y-3">
         <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-400">
@@ -530,7 +550,7 @@ export const CatalogSidebar: React.FC<CatalogSidebarProps> = ({
         <div className="grid grid-cols-2 gap-1.5 bg-slate-950 p-1 rounded-lg border border-slate-800">
           <button
             onClick={() => onUpdateConfig({ topology: 'fishbone' })}
-            className={`px-2.5 py-2 rounded-md text-xs font-medium transition text-center ${
+            className={`px-2.5 py-2.5 min-h-[42px] rounded-md text-xs font-medium transition text-center flex items-center justify-center ${
               config.topology === 'fishbone'
                 ? 'bg-amber-500 text-slate-950 font-bold shadow'
                 : 'text-slate-400 hover:text-slate-200'
@@ -540,7 +560,7 @@ export const CatalogSidebar: React.FC<CatalogSidebarProps> = ({
           </button>
           <button
             onClick={() => onUpdateConfig({ topology: 'horizontal' })}
-            className={`px-2.5 py-2 rounded-md text-xs font-medium transition text-center ${
+            className={`px-2.5 py-2.5 min-h-[42px] rounded-md text-xs font-medium transition text-center flex items-center justify-center ${
               config.topology === 'horizontal'
                 ? 'bg-amber-500 text-slate-950 font-bold shadow'
                 : 'text-slate-400 hover:text-slate-200'
@@ -723,7 +743,7 @@ export const CatalogSidebar: React.FC<CatalogSidebarProps> = ({
         <div className="grid grid-cols-3 gap-1.5">
           <button
             onClick={onToggleWireTool}
-            className={`flex items-center justify-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium border transition ${
+            className={`flex items-center justify-center gap-1.5 px-2 py-2.5 min-h-[42px] rounded-md text-xs font-medium border transition ${
               wireToolActive
                 ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-bold'
                 : 'bg-slate-950 hover:bg-slate-800 text-slate-200 border-slate-800'
@@ -734,7 +754,7 @@ export const CatalogSidebar: React.FC<CatalogSidebarProps> = ({
           </button>
           <button
             onClick={onAutoWire}
-            className="flex items-center justify-center gap-1 px-2 py-1.5 rounded-md bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30 text-xs font-medium transition"
+            className="flex items-center justify-center gap-1.5 px-2 py-2.5 min-h-[42px] rounded-md bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30 text-xs font-medium transition"
             title="Gerar fiação automática mantendo fios manuais"
           >
             <Sparkles className="w-3.5 h-3.5" />
@@ -742,7 +762,7 @@ export const CatalogSidebar: React.FC<CatalogSidebarProps> = ({
           </button>
           <button
             onClick={onClearWires}
-            className="flex items-center justify-center gap-1 px-2 py-1.5 rounded-md bg-slate-950 hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 border border-slate-800 text-xs font-medium transition"
+            className="flex items-center justify-center gap-1.5 px-2 py-2.5 min-h-[42px] rounded-md bg-slate-950 hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 border border-slate-800 text-xs font-medium transition"
             title="Remover todos os fios para conectar do zero"
           >
             <Trash2 className="w-3.5 h-3.5" />
@@ -768,7 +788,7 @@ export const CatalogSidebar: React.FC<CatalogSidebarProps> = ({
                 <button
                   key={wt.id}
                   onClick={() => onSelectWireType(wt.id)}
-                  className={`py-1 rounded text-[10px] font-bold ${wt.color} ${
+                  className={`py-2 min-h-[38px] flex items-center justify-center rounded text-[10px] font-bold ${wt.color} ${
                     activeWireType === wt.id ? 'ring-2 ring-white' : 'opacity-60 hover:opacity-100'
                   }`}
                 >
@@ -832,15 +852,15 @@ export const CatalogSidebar: React.FC<CatalogSidebarProps> = ({
               >
                 <button
                   onClick={() => toggleGroup(grp.id)}
-                  className="w-full px-3 py-2 bg-slate-900/90 hover:bg-slate-800/80 flex items-center justify-between text-xs font-semibold text-slate-200 transition"
+                  className="w-full px-3 py-2.5 min-h-[42px] bg-slate-900/90 hover:bg-slate-800/80 flex items-center justify-between text-xs font-semibold text-slate-200 transition"
                 >
                   <span>{grp.title}</span>
                   <div className="flex items-center gap-1.5 text-slate-400">
                     <span className="text-[10px] font-mono">{items.length}</span>
                     {isOpen ? (
-                      <ChevronDown className="w-3.5 h-3.5" />
+                      <ChevronDown className="w-4 h-4" />
                     ) : (
-                      <ChevronRight className="w-3.5 h-3.5" />
+                      <ChevronRight className="w-4 h-4" />
                     )}
                   </div>
                 </button>
@@ -859,9 +879,9 @@ export const CatalogSidebar: React.FC<CatalogSidebarProps> = ({
                         onDragEnd={() => {
                           (window as any).__draggedCatalogPoles = 1;
                         }}
-                        className="p-2 rounded-md bg-slate-900 hover:bg-slate-800/90 border border-slate-800/90 hover:border-slate-700 transition flex items-center justify-between gap-2 cursor-grab active:cursor-grabbing"
+                        className="p-2.5 rounded-lg bg-slate-900 hover:bg-slate-800/90 border border-slate-800/90 hover:border-slate-700 transition flex items-center justify-between gap-2.5 cursor-grab active:cursor-grabbing"
                       >
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
                             <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold rounded bg-slate-800 text-slate-200 border border-slate-700 shrink-0">
                               {item.poles}P
@@ -870,17 +890,18 @@ export const CatalogSidebar: React.FC<CatalogSidebarProps> = ({
                               {item.label}
                             </span>
                           </div>
-                          <div className="text-[10.5px] text-slate-400 mt-0.5 pl-0.5">
+                          <div className="text-[10.5px] text-slate-400 mt-0.5 pl-0.5 truncate">
                             {item.sublabel}
                           </div>
                         </div>
 
                         <button
                           onClick={() => onQuickAddCatalogItem(item.key)}
-                          className="p-1.5 rounded bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-300 transition shrink-0"
+                          className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-lg bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-300 transition flex items-center justify-center shrink-0 active:scale-95 shadow-sm"
                           title="Adicionar ao quadro"
+                          aria-label={`Adicionar ${item.label} ao quadro`}
                         >
-                          <Plus className="w-3.5 h-3.5" />
+                          <Plus className="w-5 h-5" />
                         </button>
                       </div>
                     ))}

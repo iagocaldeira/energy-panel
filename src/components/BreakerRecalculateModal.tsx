@@ -55,71 +55,72 @@ export const BreakerRecalculateModal: React.FC<BreakerRecalculateModalProps> = (
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-2 sm:p-4 animate-in fade-in duration-150"
       onClick={onCancel}
     >
       <div
-        className="w-full max-w-2xl bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[88vh]"
+        className="w-full max-w-2xl mx-2 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
-        <div className="px-5 py-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-inner">
-              <Wand2 className="w-5 h-5" />
+        <div className="px-4 sm:px-5 py-3.5 sm:py-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <div className="w-8 sm:w-9 h-8 sm:h-9 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-inner shrink-0">
+              <Wand2 className="w-4 sm:w-5 h-4 sm:h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+              <h3 className="text-xs sm:text-sm font-bold text-slate-100 flex items-center gap-1.5 sm:gap-2">
                 Recálculo Automático de Disjuntores
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 font-mono font-medium">
                   NBR 5410
                 </span>
               </h3>
-              <p className="text-[11px] text-slate-400">
-                Confira o redimensionamento dos disjuntores e cabos com base nas cargas nominais
+              <p className="text-[10px] sm:text-[11px] text-slate-400">
+                Confira o redimensionamento de disjuntores e cabos com base nas cargas nominais
               </p>
             </div>
           </div>
 
           <button
             onClick={onCancel}
-            className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition"
+            className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition shrink-0"
             title="Fechar"
+            aria-label="Fechar"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Modal Body */}
-        <div className="p-5 overflow-y-auto space-y-4 text-xs">
+        <div className="p-3.5 sm:p-5 overflow-y-auto space-y-3.5 sm:space-y-4 text-xs">
           {/* Summary Metric Cards */}
-          <div className="grid grid-cols-4 gap-2.5">
-            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-              <div className="text-[10px] uppercase tracking-wider text-slate-400">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5">
+            <div className="p-2.5 sm:p-3 rounded-xl bg-slate-950 border border-slate-800">
+              <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
                 Circuitos
               </div>
-              <div className="text-lg font-extrabold font-mono text-slate-100 mt-0.5">
+              <div className="text-base sm:text-lg font-extrabold font-mono text-slate-100 mt-0.5">
                 {totalCircuits}
               </div>
-              <div className="text-[11px] text-slate-400 truncate">
+              <div className="text-[10px] sm:text-[11px] text-slate-400 truncate">
                 Analisados no QDC
               </div>
             </div>
 
-            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30">
-              <div className="text-[10px] uppercase tracking-wider text-amber-300">
+            <div className="p-2.5 sm:p-3 rounded-xl bg-amber-500/10 border border-amber-500/30">
+              <div className="text-[10px] uppercase tracking-wider text-amber-300 font-semibold">
                 Ajustes
               </div>
-              <div className="text-lg font-extrabold font-mono text-amber-400 mt-0.5">
+              <div className="text-base sm:text-lg font-extrabold font-mono text-amber-400 mt-0.5">
                 {changedCount}
               </div>
-              <div className="text-[11px] text-amber-200/80 truncate">
+              <div className="text-[10px] sm:text-[11px] text-amber-200/80 truncate">
                 Disjuntores a mudar
               </div>
             </div>
 
             <div
-              className={`p-3 rounded-xl border ${
+              className={`p-2.5 sm:p-3 rounded-xl border ${
                 overloadedCount > 0
                   ? 'bg-rose-500/15 border-rose-500/40 text-rose-200'
                   : 'bg-slate-950 border-slate-800 text-slate-300'
@@ -127,46 +128,46 @@ export const BreakerRecalculateModal: React.FC<BreakerRecalculateModalProps> = (
             >
               <div
                 className={`text-[10px] uppercase tracking-wider ${
-                  overloadedCount > 0 ? 'text-rose-300 font-bold' : 'text-slate-400'
+                  overloadedCount > 0 ? 'text-rose-300 font-bold' : 'text-slate-400 font-semibold'
                 }`}
               >
                 Sobrecargas
               </div>
               <div
-                className={`text-lg font-extrabold font-mono mt-0.5 ${
+                className={`text-base sm:text-lg font-extrabold font-mono mt-0.5 ${
                   overloadedCount > 0 ? 'text-rose-400' : 'text-slate-100'
                 }`}
               >
                 {overloadedCount}
               </div>
-              <div className="text-[11px] opacity-80 truncate">
-                {overloadedCount > 0 ? 'Corrigidas agora' : 'Nenhuma detectada'}
+              <div className="text-[10px] sm:text-[11px] opacity-80 truncate">
+                {overloadedCount > 0 ? 'Corrigidas agora' : 'Nenhuma'}
               </div>
             </div>
 
-            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
-              <div className="text-[10px] uppercase tracking-wider text-emerald-300">
+            <div className="p-2.5 sm:p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
+              <div className="text-[10px] uppercase tracking-wider text-emerald-300 font-semibold">
                 Conformes
               </div>
-              <div className="text-lg font-extrabold font-mono text-emerald-400 mt-0.5">
+              <div className="text-base sm:text-lg font-extrabold font-mono text-emerald-400 mt-0.5">
                 {unchangedCount}
               </div>
-              <div className="text-[11px] text-emerald-200/80 truncate">
+              <div className="text-[10px] sm:text-[11px] text-emerald-200/80 truncate">
                 Já adequados
               </div>
             </div>
           </div>
 
           {/* Filter Bar */}
-          <div className="flex items-center justify-between pt-1">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pt-1">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
               Detalhamento dos Circuitos
             </span>
 
-            <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px]">
+            <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px] w-full sm:w-auto">
               <button
                 onClick={() => setActiveFilter('changed')}
-                className={`px-2.5 py-1 rounded-md transition font-medium ${
+                className={`flex-1 sm:flex-initial px-2.5 py-1 rounded-md transition font-medium text-center ${
                   activeFilter === 'changed'
                     ? 'bg-amber-500 text-slate-950 font-bold shadow'
                     : 'text-slate-400 hover:text-slate-200'
@@ -176,7 +177,7 @@ export const BreakerRecalculateModal: React.FC<BreakerRecalculateModalProps> = (
               </button>
               <button
                 onClick={() => setActiveFilter('all')}
-                className={`px-2.5 py-1 rounded-md transition font-medium ${
+                className={`flex-1 sm:flex-initial px-2.5 py-1 rounded-md transition font-medium text-center ${
                   activeFilter === 'all'
                     ? 'bg-amber-500 text-slate-950 font-bold shadow'
                     : 'text-slate-400 hover:text-slate-200'
@@ -278,20 +279,20 @@ export const BreakerRecalculateModal: React.FC<BreakerRecalculateModalProps> = (
                   </div>
 
                   {/* Comparison Grid (Disjuntor & Cabo) */}
-                  <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-800/80">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-slate-800/80">
                     {/* Disjuntor Box */}
-                    <div className="p-2 rounded-lg bg-slate-900/90 border border-slate-800 flex flex-col justify-between">
-                      <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                    <div className="p-2 sm:p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 flex flex-col justify-between">
+                      <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
                         Disjuntor Termomagnético (In)
                       </div>
-                      <div className="mt-1 flex items-center gap-2 font-mono">
+                      <div className="mt-1 flex items-center gap-1.5 sm:gap-2 font-mono flex-wrap">
                         {item.breakerChanged ? (
                           <>
-                            <span className="text-slate-400 line-through">
+                            <span className="text-slate-400 line-through text-xs">
                               {item.fromRatingAmps} A
                             </span>
-                            <ArrowRight className="w-3.5 h-3.5 text-amber-400" />
-                            <span className="text-sm font-extrabold text-amber-300">
+                            <ArrowRight className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            <span className="text-xs sm:text-sm font-extrabold text-amber-300">
                               {item.toRatingAmps} A
                             </span>
                             <span className="text-[10px] text-slate-400 font-sans">
@@ -300,7 +301,7 @@ export const BreakerRecalculateModal: React.FC<BreakerRecalculateModalProps> = (
                           </>
                         ) : (
                           <div className="flex items-center gap-1.5">
-                            <span className="text-sm font-extrabold text-slate-200">
+                            <span className="text-xs sm:text-sm font-extrabold text-slate-200">
                               {item.fromRatingAmps} A
                             </span>
                             <span className="text-[10px] text-slate-400 font-sans">
@@ -312,24 +313,24 @@ export const BreakerRecalculateModal: React.FC<BreakerRecalculateModalProps> = (
                     </div>
 
                     {/* Wire Gauge Box */}
-                    <div className="p-2 rounded-lg bg-slate-900/90 border border-slate-800 flex flex-col justify-between">
-                      <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                    <div className="p-2 sm:p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 flex flex-col justify-between">
+                      <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
                         Cabo do Circuito (Iz ≥ In)
                       </div>
-                      <div className="mt-1 flex items-center gap-2 font-mono">
+                      <div className="mt-1 flex items-center gap-1.5 sm:gap-2 font-mono flex-wrap">
                         {item.wireChanged ? (
                           <>
-                            <span className="text-slate-400 line-through">
+                            <span className="text-slate-400 line-through text-xs">
                               {item.fromWireGaugeMm2} mm²
                             </span>
-                            <ArrowRight className="w-3.5 h-3.5 text-sky-400" />
-                            <span className="text-sm font-extrabold text-sky-300">
+                            <ArrowRight className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                            <span className="text-xs sm:text-sm font-extrabold text-sky-300">
                               {item.toWireGaugeMm2} mm²
                             </span>
                           </>
                         ) : (
                           <div className="flex items-center gap-1.5">
-                            <span className="text-sm font-extrabold text-slate-200">
+                            <span className="text-xs sm:text-sm font-extrabold text-slate-200">
                               {item.fromWireGaugeMm2} mm²
                             </span>
                             <span className="text-[10px] text-slate-400 font-sans">
@@ -353,28 +354,30 @@ export const BreakerRecalculateModal: React.FC<BreakerRecalculateModalProps> = (
         </div>
 
         {/* Modal Footer */}
-        <div className="px-5 py-3.5 bg-slate-950 border-t border-slate-800 flex items-center justify-between gap-3">
-          <div className="text-[11px] text-slate-400 hidden sm:block">
+        <div className="px-4 sm:px-5 py-3 sm:py-3.5 bg-slate-950 border-t border-slate-800 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3">
+          <div className="text-[10px] sm:text-[11px] text-slate-400 hidden sm:block">
             Critério NBR 5410: <span className="font-mono text-slate-300">Ib ≤ In ≤ Iz</span> e queda de tensão ≤ 4%
           </div>
 
-          <div className="flex items-center gap-2.5 ml-auto">
+          <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-2 sm:gap-2.5 w-full sm:w-auto ml-auto">
             <button
               onClick={onCancel}
-              className="px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition"
+              className="w-full sm:w-auto px-4 py-2.5 sm:py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold text-center transition min-h-[40px] sm:min-h-0 flex items-center justify-center"
             >
               Cancelar
             </button>
             <button
               onClick={onConfirm}
-              className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition shadow-lg flex items-center gap-1.5"
+              className="w-full sm:w-auto px-4 py-2.5 sm:py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition shadow-lg flex items-center justify-center gap-1.5 min-h-[40px] sm:min-h-0"
             >
               <Wand2 className="w-3.5 h-3.5" />
-              {changedCount > 0
-                ? `Confirmar e Aplicar (${changedCount} ${
-                    changedCount === 1 ? 'alteração' : 'alterações'
-                  })`
-                : 'Concluir'}
+              <span>
+                {changedCount > 0
+                  ? `Confirmar e Aplicar (${changedCount} ${
+                      changedCount === 1 ? 'alteração' : 'alterações'
+                    })`
+                  : 'Concluir'}
+              </span>
             </button>
           </div>
         </div>

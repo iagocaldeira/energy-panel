@@ -3,10 +3,14 @@ import {
   FileSpreadsheet,
   FolderOpen,
   LayoutGrid,
+  Menu,
   Printer,
   RotateCcw,
+  Settings2,
+  Sliders,
   Trash2,
   Workflow,
+  X,
   Zap,
 } from 'lucide-react';
 import {
@@ -41,6 +45,8 @@ import { BomAndLabelsView } from './components/BomAndLabelsView';
 import { PhaseBalanceModal } from './components/PhaseBalanceModal';
 import { BreakerRecalculateModal } from './components/BreakerRecalculateModal';
 import { SingleLineDiagramView } from './components/SingleLineDiagramView';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { parsePanelConfig } from './utils/schemas';
 
 type ActiveTab = 'canvas' | 'unifilar' | 'schedule' | 'bom';
 
@@ -52,11 +58,10 @@ export function App() {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        return {
-          ...PANEL_PRESETS.fishbone,
-          ...parsed,
-          groundingSystem: parsed.groundingSystem || 'TN-S',
-        };
+        const validated = parsePanelConfig(parsed);
+        if (validated.success) {
+          return validated.data;
+        }
       }
     } catch {
       // ignore storage errors
@@ -73,6 +78,18 @@ export function App() {
     useState<PhaseBalancePreview | null>(null);
   const [breakerPreview, setBreakerPreview] =
     useState<BreakerRecalculatePreview | null>(null);
+
+  // Responsive mobile states
+  const [mobileCatalogOpen, setMobileCatalogOpen] = useState<boolean>(false);
+  const [mobileInspectorOpen, setMobileInspectorOpen] = useState<boolean>(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
+
+  const handleSelectModule = (id: string | null) => {
+    setSelectedModuleId(id);
+    if (id && typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setMobileInspectorOpen(true);
+    }
+  };
 
   const svgRef = useRef<SVGSVGElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -760,7 +777,7 @@ export function App() {
     URL.revokeObjectURL(url);
   };
 
-  // Import JSON with robust validation and sanitization
+  // Import JSON with robust Zod validation and sanitization
   const handleImportJson = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -768,67 +785,19 @@ export function App() {
     reader.onload = () => {
       try {
         const parsed = JSON.parse(reader.result as string);
-        if (
-          !parsed ||
-          typeof parsed !== 'object' ||
-          !Array.isArray(parsed.modules) ||
-          (parsed.topology !== 'fishbone' && parsed.topology !== 'horizontal')
-        ) {
-          alert('Arquivo JSON inválido: a estrutura do QDC não corresponde ao formato esperado.');
+        const validation = parsePanelConfig(parsed);
+
+        if (!validation.success) {
+          const previewErrors = validation.errors.slice(0, 8).join('\n• ');
+          const remaining = validation.errors.length - 8;
+          const moreSuffix = remaining > 0 ? `\n... e mais ${remaining} erro(s).` : '';
+          alert(
+            `Falha na validação do projeto QDC:\n\n• ${previewErrors}${moreSuffix}\n\nVerifique se o arquivo JSON possui uma estrutura de quadro válida.`
+          );
           return;
         }
 
-        const sanitizedConfig: PanelConfig = {
-          ...config,
-          ...parsed,
-          topology: parsed.topology === 'horizontal' ? 'horizontal' : 'fishbone',
-          supplyType: ['mono', 'bi', 'tri'].includes(parsed.supplyType) ? parsed.supplyType : 'tri',
-          voltageSystem: ['127_220', '220_380'].includes(parsed.voltageSystem)
-            ? parsed.voltageSystem
-            : '127_220',
-          groundingSystem: ['TN-S', 'TN-C-S', 'TN-C', 'TT', 'IT'].includes(parsed.groundingSystem)
-            ? parsed.groundingSystem
-            : 'TN-S',
-          penGroundedAtPanel: parsed.penGroundedAtPanel !== false,
-          fishboneSlotsPerSide:
-            typeof parsed.fishboneSlotsPerSide === 'number' && parsed.fishboneSlotsPerSide >= 6
-              ? parsed.fishboneSlotsPerSide
-              : 12,
-          horizontalRows:
-            typeof parsed.horizontalRows === 'number' && parsed.horizontalRows >= 2
-              ? Math.min(4, Math.max(2, parsed.horizontalRows))
-              : 3,
-          modulesPerRow:
-            typeof parsed.modulesPerRow === 'number' && parsed.modulesPerRow >= 8
-              ? Math.min(24, Math.max(12, parsed.modulesPerRow))
-              : 16,
-          modules: parsed.modules.map((m: any, idx: number) => ({
-            id: m.id || `mod_${Date.now()}_${idx}`,
-            category: m.category || 'breaker',
-            name: m.name || `Circuito ${idx + 1}`,
-            circuitNumber: m.circuitNumber,
-            circuitType: m.circuitType || 'tug',
-            poles: m.poles || 1,
-            ratingAmps: m.ratingAmps || 20,
-            curve: m.curve || 'C',
-            sensitivityMa: m.sensitivityMa,
-            dpsKa: m.dpsKa,
-            dpsVoltage: m.dpsVoltage,
-            railId: m.railId || (parsed.topology === 'horizontal' ? 'row_1' : 'left_rail'),
-            position: typeof m.position === 'number' ? m.position : 0,
-            phases: m.phases || 'R',
-            voltage: m.voltage || 127,
-            powerWatts: m.powerWatts || 0,
-            wireGaugeMm2: m.wireGaugeMm2 || 2.5,
-            isOn: m.isOn !== false,
-            drProtected: Boolean(m.drProtected),
-            notes: m.notes || '',
-          })),
-          wires: Array.isArray(parsed.wires) ? parsed.wires : [],
-          combBusbars: Array.isArray(parsed.combBusbars) ? parsed.combBusbars : [],
-        };
-
-        setConfig(sanitizedConfig);
+        setConfig(validation.data);
         setSelectedModuleId(null);
       } catch {
         alert('Erro ao processar o arquivo JSON. Certifique-se de que é um JSON válido.');
@@ -854,35 +823,35 @@ export function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-950 text-slate-100">
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 relative">
       {/* Top Application Header */}
-      <header className="h-14 px-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between gap-4 shrink-0 print:hidden">
+      <header className="h-14 px-3 sm:px-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between gap-2 sm:gap-4 shrink-0 print:hidden relative z-30">
         {/* Brand & Project Title */}
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center text-slate-950 shadow-md shrink-0">
-            <Zap className="w-5 h-5 fill-current" />
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center text-slate-950 shadow-md shrink-0">
+            <Zap className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="font-extrabold tracking-tight text-sm text-amber-400">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <span className="font-extrabold tracking-tight text-xs sm:text-sm text-amber-400 shrink-0">
                 QDC STUDIO
               </span>
-              <span className="text-slate-600">•</span>
+              <span className="text-slate-600 hidden xs:inline">•</span>
               <input
                 type="text"
                 value={config.title}
                 onChange={(e) => handleUpdateConfig({ title: e.target.value })}
-                className="bg-transparent hover:bg-slate-800/70 focus:bg-slate-800 px-1.5 py-0.5 rounded text-sm font-semibold text-slate-100 focus:outline-none w-60 truncate"
+                className="bg-transparent hover:bg-slate-800/70 focus:bg-slate-800 px-1.5 py-0.5 rounded text-xs sm:text-sm font-semibold text-slate-100 focus:outline-none w-28 xs:w-44 sm:w-60 truncate"
               />
             </div>
-            <div className="text-[11px] text-slate-400 truncate">
+            <div className="text-[10px] sm:text-[11px] text-slate-400 truncate hidden md:block">
               Planejador de Quadro Elétrico e Dimensionamento NBR 5410
             </div>
           </div>
         </div>
 
-        {/* Center Navigation Tabs */}
-        <div className="flex items-center bg-slate-950 p-1 rounded-lg border border-slate-800">
+        {/* Center Navigation Tabs (Desktop: >= md) */}
+        <div className="hidden md:flex items-center bg-slate-950 p-1 rounded-lg border border-slate-800">
           <button
             onClick={() => setActiveTab('canvas')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition ${
@@ -929,8 +898,8 @@ export function App() {
           </button>
         </div>
 
-        {/* Right Model Switcher (Only Espinha de Peixe vs DIN Horizontal) & Actions */}
-        <div className="flex items-center gap-2 shrink-0">
+        {/* Right Model Switcher (Only Espinha de Peixe vs DIN Horizontal) & Actions (Desktop: >= md) */}
+        <div className="hidden md:flex items-center gap-2 shrink-0">
           <div className="flex items-center bg-slate-950 p-1 rounded-lg border border-slate-800">
             <button
               onClick={() => handleSwitchTopology('fishbone')}
@@ -986,82 +955,329 @@ export function App() {
             Abrir
           </button>
         </div>
+
+        {/* Mobile Header Hamburger Button (< md) */}
+        <div className="flex md:hidden items-center gap-1 shrink-0">
+          <button
+            onClick={() => setMobileMenuOpen((v) => !v)}
+            className="w-9 h-9 min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition active:scale-95"
+            aria-label="Opções do projeto"
+            title="Menu de opções"
+          >
+            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+        </div>
       </header>
 
-      {/* Main Content Area */}
-      <main className="flex-1 flex overflow-hidden">
-        <div className={`flex-1 flex overflow-hidden ${activeTab === 'canvas' ? '' : 'hidden'}`}>
-          <CatalogSidebar
-            config={config}
-            onUpdateConfig={handleUpdateConfig}
-            onQuickAddCatalogItem={handleQuickAddCatalogItem}
-            onAutoWire={handleAutoWire}
-            onClearWires={handleClearWires}
-            wireToolActive={wireToolActive}
-            onToggleWireTool={() => setWireToolActive((v) => !v)}
-            activeWireType={activeWireType}
-            onSelectWireType={setActiveWireType}
-            activeWireGauge={activeWireGauge}
-            onSelectWireGauge={setActiveWireGauge}
+      {/* Mobile Secondary Menu Dropdown Modal */}
+      {mobileMenuOpen && (
+        <div className="md:hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex flex-col justify-start pt-16 px-4 animate-in fade-in duration-150">
+          <div
+            className="fixed inset-0"
+            onClick={() => setMobileMenuOpen(false)}
+            aria-hidden="true"
           />
+          <div className="relative bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-2xl space-y-4 max-w-sm w-full mx-auto z-10">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                Opções do Projeto
+              </span>
+              <button
+                onClick={() => setMobileMenuOpen(false)}
+                className="w-8 h-8 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 flex items-center justify-center"
+                aria-label="Fechar menu"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-          <div className="flex-1 overflow-hidden">
-            <PanelCanvas
-              config={config}
-              selectedModuleId={selectedModuleId}
-              onSelectModule={setSelectedModuleId}
-              onToggleModulePower={handleToggleModulePower}
-              onMoveModule={handleMoveModule}
-              onDropCatalogItem={handleDropCatalogItem}
-              wireToolActive={wireToolActive}
-              activeWireType={activeWireType}
-              activeWireGauge={activeWireGauge}
-              onAddWire={handleAddWire}
-              onDeleteWire={handleDeleteWire}
-              svgRef={svgRef}
-            />
+            <div>
+              <label className="block text-xs text-slate-400 mb-1.5 font-medium">
+                Modelo do Barramento
+              </label>
+              <div className="grid grid-cols-2 gap-1.5 bg-slate-950 p-1 rounded-lg border border-slate-800">
+                <button
+                  onClick={() => {
+                    handleSwitchTopology('fishbone');
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`px-2.5 py-2 min-h-[40px] rounded text-xs font-medium transition text-center flex items-center justify-center ${
+                    config.topology === 'fishbone'
+                      ? 'bg-amber-500 text-slate-950 font-bold shadow'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Espinha de Peixe
+                </button>
+                <button
+                  onClick={() => {
+                    handleSwitchTopology('horizontal');
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`px-2.5 py-2 min-h-[40px] rounded text-xs font-medium transition text-center flex items-center justify-center ${
+                    config.topology === 'horizontal'
+                      ? 'bg-amber-500 text-slate-950 font-bold shadow'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  DIN Horizontal
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-2 border-t border-slate-800">
+              <button
+                onClick={() => {
+                  fileInputRef.current?.click();
+                  setMobileMenuOpen(false);
+                }}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 min-h-[42px] rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium"
+              >
+                <FolderOpen className="w-4 h-4 text-sky-400" />
+                <span>Abrir Projeto JSON</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  handleResetToDefaultModel();
+                  setMobileMenuOpen(false);
+                }}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 min-h-[42px] rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium"
+              >
+                <RotateCcw className="w-4 h-4 text-amber-400" />
+                <span>Restaurar Modelo Padrão</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  handleClearPanel();
+                  setMobileMenuOpen(false);
+                }}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 min-h-[42px] rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/20 text-xs font-medium"
+              >
+                <Trash2 className="w-4 h-4 text-rose-400" />
+                <span>Limpar Quadro</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Main Content Area */}
+      <main className="flex-1 flex overflow-hidden pb-16 md:pb-0 relative">
+        <ErrorBoundary>
+          <div className={`flex-1 flex overflow-hidden ${activeTab === 'canvas' ? '' : 'hidden'}`}>
+            {/* Desktop Catalog Sidebar (>= 1024px) */}
+            <div className="hidden lg:flex shrink-0 h-full">
+              <CatalogSidebar
+                config={config}
+                onUpdateConfig={handleUpdateConfig}
+                onQuickAddCatalogItem={handleQuickAddCatalogItem}
+                onAutoWire={handleAutoWire}
+                onClearWires={handleClearWires}
+                wireToolActive={wireToolActive}
+                onToggleWireTool={() => setWireToolActive((v) => !v)}
+                activeWireType={activeWireType}
+                onSelectWireType={setActiveWireType}
+                activeWireGauge={activeWireGauge}
+                onSelectWireGauge={setActiveWireGauge}
+              />
+            </div>
+
+            {/* Canvas Viewport (takes full width in mobile < 1024px) */}
+            <div className="flex-1 w-full overflow-hidden relative flex flex-col">
+              {/* Floating Mobile Controls to open Drawers (< 1024px) */}
+              <div className="lg:hidden absolute bottom-3 left-3 right-3 flex items-center justify-between pointer-events-none z-30">
+                <button
+                  onClick={() => setMobileCatalogOpen(true)}
+                  className="pointer-events-auto flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-900/95 hover:bg-slate-800 text-slate-100 border border-slate-700/90 shadow-xl backdrop-blur text-xs font-semibold active:scale-95 transition"
+                  title="Abrir catálogo de componentes"
+                >
+                  <Sliders className="w-4 h-4 text-amber-400" />
+                  <span>Catálogo</span>
+                </button>
+
+                <button
+                  onClick={() => setMobileInspectorOpen(true)}
+                  className="pointer-events-auto flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-900/95 hover:bg-slate-800 text-slate-100 border border-slate-700/90 shadow-xl backdrop-blur text-xs font-semibold active:scale-95 transition relative"
+                  title="Abrir propriedades e análise"
+                >
+                  <Settings2 className="w-4 h-4 text-amber-400" />
+                  <span>Propriedades</span>
+                  {selectedModule && (
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400 ring-2 ring-slate-900 absolute -top-1 -right-1 animate-pulse" />
+                  )}
+                </button>
+              </div>
+
+              <PanelCanvas
+                config={config}
+                selectedModuleId={selectedModuleId}
+                onSelectModule={handleSelectModule}
+                onToggleModulePower={handleToggleModulePower}
+                onMoveModule={handleMoveModule}
+                onDropCatalogItem={handleDropCatalogItem}
+                onDeleteModule={handleDeleteModule}
+                wireToolActive={wireToolActive}
+                activeWireType={activeWireType}
+                activeWireGauge={activeWireGauge}
+                onAddWire={handleAddWire}
+                onDeleteWire={handleDeleteWire}
+                svgRef={svgRef}
+              />
+            </div>
+
+            {/* Desktop Inspector Panel (>= 1024px) */}
+            <div className="hidden lg:flex shrink-0 h-full">
+              <InspectorPanel
+                config={config}
+                selectedModule={selectedModule}
+                onUpdateModule={handleUpdateModule}
+                onMoveModule={handleMoveModule}
+                onDeleteModule={handleDeleteModule}
+                onDuplicateModule={handleDuplicateModule}
+                onNudgeModule={handleNudgeModule}
+                onSelectModule={handleSelectModule}
+                onOpenBalancePreview={handleOpenBalancePreview}
+                onOpenBreakerRecalculatePreview={handleAutoDimensionAll}
+              />
+            </div>
           </div>
 
-          <InspectorPanel
-            config={config}
-            selectedModule={selectedModule}
-            onUpdateModule={handleUpdateModule}
-            onMoveModule={handleMoveModule}
-            onDeleteModule={handleDeleteModule}
-            onDuplicateModule={handleDuplicateModule}
-            onNudgeModule={handleNudgeModule}
-            onSelectModule={setSelectedModuleId}
-            onOpenBalancePreview={handleOpenBalancePreview}
-            onOpenBreakerRecalculatePreview={handleAutoDimensionAll}
-          />
-        </div>
+          {activeTab === 'unifilar' && (
+            <SingleLineDiagramView config={config} />
+          )}
 
-        {activeTab === 'unifilar' && (
-          <SingleLineDiagramView config={config} />
-        )}
+          {activeTab === 'schedule' && (
+            <CircuitScheduleView
+              config={config}
+              onUpdateModule={handleUpdateModule}
+              onDeleteModule={handleDeleteModule}
+              onQuickAddCircuit={() => handleQuickAddCatalogItem('brk_1p_16')}
+              onQuickAddRcbo={() => handleQuickAddCatalogItem('rcbo_1p_16')}
+              onOpenBalancePreview={handleOpenBalancePreview}
+              onAutoDimensionAll={handleAutoDimensionAll}
+              onOpenBreakerRecalculatePreview={handleOpenBreakerRecalculatePreview}
+            />
+          )}
 
-        {activeTab === 'schedule' && (
-          <CircuitScheduleView
-            config={config}
-            onUpdateModule={handleUpdateModule}
-            onDeleteModule={handleDeleteModule}
-            onQuickAddCircuit={() => handleQuickAddCatalogItem('brk_1p_16')}
-            onQuickAddRcbo={() => handleQuickAddCatalogItem('rcbo_1p_16')}
-            onOpenBalancePreview={handleOpenBalancePreview}
-            onAutoDimensionAll={handleAutoDimensionAll}
-            onOpenBreakerRecalculatePreview={handleOpenBreakerRecalculatePreview}
-          />
-        )}
-
-        {activeTab === 'bom' && (
-          <BomAndLabelsView
-            config={config}
-            onExportJson={handleExportJson}
-            onExportSvg={handleExportSvg}
-            onOpenUnifilar={() => setActiveTab('unifilar')}
-          />
-        )}
+          {activeTab === 'bom' && (
+            <BomAndLabelsView
+              config={config}
+              onExportJson={handleExportJson}
+              onExportSvg={handleExportSvg}
+              onOpenUnifilar={() => setActiveTab('unifilar')}
+            />
+          )}
+        </ErrorBoundary>
       </main>
+
+      {/* Mobile Drawer: Catalog Sidebar (< 1024px) */}
+      {mobileCatalogOpen && (
+        <div className="lg:hidden fixed inset-0 z-50 flex">
+          <div
+            className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity"
+            onClick={() => setMobileCatalogOpen(false)}
+            aria-hidden="true"
+          />
+          <div className="relative w-80 max-w-[85vw] h-full bg-slate-900 shadow-2xl flex flex-col z-10 animate-in slide-in-from-left duration-200 border-r border-slate-800">
+            <CatalogSidebar
+              config={config}
+              onUpdateConfig={handleUpdateConfig}
+              onQuickAddCatalogItem={handleQuickAddCatalogItem}
+              onAutoWire={handleAutoWire}
+              onClearWires={handleClearWires}
+              wireToolActive={wireToolActive}
+              onToggleWireTool={() => setWireToolActive((v) => !v)}
+              activeWireType={activeWireType}
+              onSelectWireType={setActiveWireType}
+              activeWireGauge={activeWireGauge}
+              onSelectWireGauge={setActiveWireGauge}
+              onClose={() => setMobileCatalogOpen(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Drawer: Inspector Panel (< 1024px) */}
+      {mobileInspectorOpen && (
+        <div className="lg:hidden fixed inset-0 z-50 flex justify-end">
+          <div
+            className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity"
+            onClick={() => setMobileInspectorOpen(false)}
+            aria-hidden="true"
+          />
+          <div className="relative w-80 max-w-[85vw] h-full bg-slate-900 shadow-2xl flex flex-col z-10 animate-in slide-in-from-right duration-200 border-l border-slate-800">
+            <InspectorPanel
+              config={config}
+              selectedModule={selectedModule}
+              onUpdateModule={handleUpdateModule}
+              onMoveModule={handleMoveModule}
+              onDeleteModule={handleDeleteModule}
+              onDuplicateModule={handleDuplicateModule}
+              onNudgeModule={handleNudgeModule}
+              onSelectModule={handleSelectModule}
+              onOpenBalancePreview={handleOpenBalancePreview}
+              onOpenBreakerRecalculatePreview={handleAutoDimensionAll}
+              onClose={() => setMobileInspectorOpen(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Bottom Navigation Bar (< md / 768px) */}
+      <nav
+        aria-label="Navegação Principal"
+        className="fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur border-t border-slate-800 flex justify-around py-1.5 md:hidden px-2 shadow-2xl"
+      >
+        <button
+          onClick={() => setActiveTab('canvas')}
+          className={`flex flex-col items-center justify-center flex-1 py-1 rounded-lg min-h-[44px] transition ${
+            activeTab === 'canvas'
+              ? 'text-amber-400 font-bold'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <LayoutGrid className="w-5 h-5 mb-0.5" />
+          <span className="text-[10px]">Montagem</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('unifilar')}
+          className={`flex flex-col items-center justify-center flex-1 py-1 rounded-lg min-h-[44px] transition ${
+            activeTab === 'unifilar'
+              ? 'text-amber-400 font-bold'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Workflow className="w-5 h-5 mb-0.5" />
+          <span className="text-[10px]">Unifilar</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('schedule')}
+          className={`flex flex-col items-center justify-center flex-1 py-1 rounded-lg min-h-[44px] transition ${
+            activeTab === 'schedule'
+              ? 'text-amber-400 font-bold'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <FileSpreadsheet className="w-5 h-5 mb-0.5" />
+          <span className="text-[10px]">Cargas</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('bom')}
+          className={`flex flex-col items-center justify-center flex-1 py-1 rounded-lg min-h-[44px] transition ${
+            activeTab === 'bom'
+              ? 'text-amber-400 font-bold'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Printer className="w-5 h-5 mb-0.5" />
+          <span className="text-[10px]">Materiais</span>
+        </button>
+      </nav>
 
       {/* Phase Balance Preview Popup Modal */}
       {balancePreview && (

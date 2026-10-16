@@ -45,69 +45,69 @@ export const BomAndLabelsView: React.FC<BomAndLabelsViewProps> = ({
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 bg-slate-950 space-y-8 print:bg-white print:text-black print:p-0">
+    <div className="flex-1 overflow-y-auto p-3.5 sm:p-6 bg-slate-950 space-y-6 sm:space-y-8 print:bg-white print:text-black print:p-0">
       {/* Top Action Bar (hidden when printing) */}
-      <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-900 p-4 rounded-xl border border-slate-800 print:hidden">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4 bg-slate-900 p-3.5 sm:p-4 rounded-xl border border-slate-800 print:hidden">
         <div>
-          <div className="flex items-center gap-2.5">
-            <h2 className="text-lg font-bold text-slate-100">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-base sm:text-lg font-bold text-slate-100">
               Lista de Compras (BOM) & Etiquetas para Impressão
             </h2>
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
               Aterramento: {config.groundingSystem || 'TN-S'}
             </span>
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <p className="text-xs text-slate-400 mt-1">
             Exporte a lista completa de materiais para orçamento ou imprima as etiquetas padrão DIN (17,5mm por módulo) e legenda da porta do QDC.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <button
             onClick={handleCopyBom}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition"
           >
             {copied ? (
               <>
                 <ClipboardCheck className="w-4 h-4 text-emerald-400" />
-                Lista Copiada!
+                <span>Lista Copiada!</span>
               </>
             ) : (
               <>
                 <Copy className="w-4 h-4" />
-                Copiar Lista (Texto/WhatsApp)
+                <span>Copiar Lista</span>
               </>
             )}
           </button>
           {onOpenUnifilar && (
             <button
               onClick={onOpenUnifilar}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 text-xs font-semibold transition"
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 text-xs font-semibold transition"
             >
               <Workflow className="w-4 h-4" />
-              Diagrama Unifilar (SVG/PDF)
+              <span>Unifilar</span>
             </button>
           )}
           <button
             onClick={onExportSvg}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition"
           >
             <Download className="w-4 h-4" />
-            Baixar Quadro (.SVG)
+            <span>SVG</span>
           </button>
           <button
             onClick={onExportJson}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition"
           >
             <Download className="w-4 h-4" />
-            Salvar Projeto (.JSON)
+            <span>JSON</span>
           </button>
           <button
             onClick={() => window.print()}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition"
+            className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition shadow-sm"
           >
             <Printer className="w-4 h-4" />
-            Imprimir Etiquetas & BOM
+            <span>Imprimir</span>
           </button>
         </div>
       </div>
@@ -119,7 +119,7 @@ export const BomAndLabelsView: React.FC<BomAndLabelsViewProps> = ({
           1. Lista Quantitativa de Materiais (Bill of Materials)
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto scroll-smooth touch-pan-x">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="border-b border-slate-800 text-slate-400 uppercase text-[10px] print:border-slate-300 print:text-slate-700">
@@ -156,19 +156,19 @@ export const BomAndLabelsView: React.FC<BomAndLabelsViewProps> = ({
       </div>
 
       {/* Section 2: Printable DIN Sticker Strips (Cartela de Etiquetas p/ Espelho do QDC) */}
-      <div className="bg-slate-900 rounded-xl border border-slate-800 p-5 space-y-4 print:bg-white print:border-slate-300">
+      <div className="bg-slate-900 rounded-xl border border-slate-800 p-3.5 sm:p-5 space-y-4 print:bg-white print:border-slate-300">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm font-bold text-slate-100 print:text-black">
             <Tag className="w-4 h-4 text-sky-400 print:text-black" />
             2. Cartela de Etiquetas para Espelho do QDC (Recortar e Colar)
           </div>
-          <span className="text-[11px] text-slate-400 print:text-slate-600">
+          <span className="text-[11px] text-slate-400 print:text-slate-600 hidden sm:inline">
             Proporção Módulo DIN (1P / 2P / 3P)
           </span>
         </div>
 
-        <div className="flex flex-wrap gap-2 p-4 bg-white rounded-lg border-2 border-dashed border-slate-400 text-slate-900">
-          {config.modules.map((m, idx) => {
+        <div className="flex flex-wrap gap-2 p-3 sm:p-4 bg-white rounded-lg border-2 border-dashed border-slate-400 text-slate-900 overflow-x-auto scroll-smooth touch-pan-x">
+          {config.modules.map((m) => {
             const widthPx = m.poles * 66;
             const isRcbo = m.category === 'rcbo';
             const headerColor =
@@ -190,7 +190,7 @@ export const BomAndLabelsView: React.FC<BomAndLabelsViewProps> = ({
               <div
                 key={m.id}
                 style={{ width: `${widthPx}px` }}
-                className="border-2 border-slate-900 rounded overflow-hidden flex flex-col justify-between text-center bg-white shadow-sm"
+                className="border-2 border-slate-900 rounded overflow-hidden flex flex-col justify-between text-center bg-white shadow-sm shrink-0"
               >
                 <div className={`py-0.5 px-1 text-[10px] font-extrabold uppercase ${headerColor}`}>
                   {m.category === 'dps'
@@ -229,30 +229,30 @@ export const BomAndLabelsView: React.FC<BomAndLabelsViewProps> = ({
       </div>
 
       {/* Section 3: Panel Door Directory Sheet (Legenda da Porta do Quadro) */}
-      <div className="bg-slate-900 rounded-xl border border-slate-800 p-5 space-y-4 print:bg-white print:border-slate-300">
+      <div className="bg-slate-900 rounded-xl border border-slate-800 p-3.5 sm:p-5 space-y-4 print:bg-white print:border-slate-300">
         <div className="text-sm font-bold text-slate-100 print:text-black">
           3. Legenda de Identificação da Porta Interna do QDC (NBR 5410 Item 6.5.4.9)
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
           {circuits.map((c, idx) => (
             <div
               key={c.id}
-              className="flex items-center justify-between p-2.5 rounded border border-slate-800 bg-slate-950 print:bg-white print:border-slate-300 text-xs"
+              className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded border border-slate-800 bg-slate-950 print:bg-white print:border-slate-300 text-xs"
             >
-              <div className="flex items-center gap-2.5">
-                <span className={`w-8 h-7 rounded font-mono font-extrabold flex items-center justify-center ${
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className={`w-8 h-7 rounded font-mono font-extrabold flex items-center justify-center shrink-0 ${
                   c.category === 'rcbo' ? 'bg-emerald-500 text-slate-950' : 'bg-amber-500 text-slate-950'
                 }`}>
                   C{c.circuitNumber || idx + 1}
                 </span>
-                <div>
-                  <div className="font-bold text-slate-100 print:text-black">{c.name}</div>
-                  <div className="text-[11px] text-slate-400 print:text-slate-600">
+                <div className="min-w-0">
+                  <div className="font-bold text-slate-100 print:text-black truncate">{c.name}</div>
+                  <div className="text-[11px] text-slate-400 print:text-slate-600 truncate">
                     Local: {c.room || 'Geral'} • {c.powerWatts}W ({c.voltage}V)
                   </div>
                 </div>
               </div>
-              <div className="text-right font-mono text-[11px] text-slate-300 print:text-black">
+              <div className="text-left sm:text-right font-mono text-[11px] text-slate-300 print:text-black shrink-0 border-t sm:border-t-0 pt-1.5 sm:pt-0 border-slate-800/80">
                 <div>
                   Disj: <strong>{c.category === 'rcbo' ? 'DDR ' : ''}{c.curve || 'C'}{c.ratingAmps}A ({c.poles}P)</strong>
                   {c.category === 'rcbo' ? (
@@ -278,3 +278,4 @@ export const BomAndLabelsView: React.FC<BomAndLabelsViewProps> = ({
     </div>
   );
 };
+

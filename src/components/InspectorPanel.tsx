@@ -16,6 +16,7 @@ import {
   ShieldAlert,
   Zap,
   RefreshCw,
+  X,
 } from 'lucide-react';
 import {
   CurveType,
@@ -51,6 +52,7 @@ interface InspectorPanelProps {
   onSelectModule: (id: string | null) => void;
   onOpenBalancePreview: () => void;
   onOpenBreakerRecalculatePreview?: () => void;
+  onClose?: () => void;
 }
 
 export const InspectorPanel: React.FC<InspectorPanelProps> = ({
@@ -64,6 +66,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
   onSelectModule,
   onOpenBalancePreview,
   onOpenBreakerRecalculatePreview,
+  onClose,
 }) => {
   const [expandedPhase, setExpandedPhase] = useState<'R' | 'S' | 'T' | null>(null);
 
@@ -144,7 +147,24 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
   ];
 
   return (
-    <aside className="w-80 bg-slate-900 border-l border-slate-800 flex flex-col h-full overflow-y-auto select-none">
+    <aside className="w-full lg:w-80 bg-slate-900 border-l border-slate-800 flex flex-col h-full overflow-y-auto select-none">
+      {/* Mobile / Modal Close Header */}
+      {onClose && (
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-950/90 sticky top-0 z-20 backdrop-blur">
+          <div className="flex items-center gap-2 text-sm font-bold text-slate-200">
+            <Settings2 className="w-4 h-4 text-amber-400" />
+            <span>Propriedades & Análise</span>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Fechar propriedades"
+            className="w-10 h-10 min-w-[40px] min-h-[40px] rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition flex items-center justify-center active:scale-95"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      )}
+
       {/* Selected Component Editor */}
       {selectedModule ? (
         <div className="p-4 border-b border-slate-800 space-y-3">
@@ -153,34 +173,38 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               <Settings2 className="w-3.5 h-3.5" />
               Propriedades
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5">
               <button
                 onClick={() => onNudgeModule(selectedModule.id, -1)}
-                className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300"
+                className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center active:scale-95"
                 title="Mover para posição anterior"
+                aria-label="Mover para posição anterior"
               >
-                <ArrowLeft className="w-3.5 h-3.5" />
+                <ArrowLeft className="w-4 h-4" />
               </button>
               <button
                 onClick={() => onNudgeModule(selectedModule.id, 1)}
-                className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300"
+                className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center active:scale-95"
                 title="Mover para próxima posição"
+                aria-label="Mover para próxima posição"
               >
-                <ArrowRight className="w-3.5 h-3.5" />
+                <ArrowRight className="w-4 h-4" />
               </button>
               <button
                 onClick={() => onDuplicateModule(selectedModule.id)}
-                className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300"
+                className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center active:scale-95"
                 title="Duplicar componente"
+                aria-label="Duplicar componente"
               >
-                <Copy className="w-3.5 h-3.5" />
+                <Copy className="w-4 h-4" />
               </button>
               <button
                 onClick={() => onDeleteModule(selectedModule.id)}
-                className="p-1 rounded bg-rose-500/15 hover:bg-rose-500 text-rose-400 hover:text-white transition"
+                className="w-8 h-8 rounded-lg bg-rose-500/15 hover:bg-rose-500 text-rose-400 hover:text-white transition flex items-center justify-center active:scale-95"
                 title="Excluir componente"
+                aria-label="Excluir componente"
               >
-                <Trash2 className="w-3.5 h-3.5" />
+                <Trash2 className="w-4 h-4" />
               </button>
             </div>
           </div>

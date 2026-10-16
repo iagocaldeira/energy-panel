@@ -96,8 +96,17 @@ export const SingleLineDiagramView: React.FC<SingleLineDiagramViewProps> = ({ co
 
   // Zoom handlers
   const handleZoomIn = () => setZoom((z) => Math.min(2.5, +(z + 0.15).toFixed(2)));
-  const handleZoomOut = () => setZoom((z) => Math.max(0.4, +(z - 0.15).toFixed(2)));
+  const handleZoomOut = () => setZoom((z) => Math.max(0.2, +(z - 0.15).toFixed(2)));
   const handleResetZoom = () => setZoom(1);
+
+  const handleFitToScreen = () => {
+    const containerWidth =
+      containerRef.current?.clientWidth ||
+      (typeof window !== 'undefined' ? window.innerWidth : 1000);
+    const availableWidth = Math.max(280, containerWidth - 24);
+    const fitZoom = Math.min(1.5, Math.max(0.18, +(availableWidth / diagramWidth).toFixed(2)));
+    setZoom(fitZoom);
+  };
 
   // SVG Export
   const handleExportSvg = () => {
@@ -193,37 +202,37 @@ export const SingleLineDiagramView: React.FC<SingleLineDiagramViewProps> = ({ co
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-950 text-slate-100">
       {/* Control Action Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 bg-slate-900 border-b border-slate-800 shrink-0 print:hidden z-10 shadow-sm">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 px-3.5 sm:px-5 py-2.5 sm:py-3 bg-slate-900 border-b border-slate-800 shrink-0 print:hidden z-10 shadow-sm">
         {/* Title & Badges */}
         <div className="flex items-center gap-3">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="font-extrabold text-sm text-slate-100 tracking-tight">
-                Diagrama Unifilar Esquemático
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+              <span className="font-extrabold text-xs sm:text-sm text-slate-100 tracking-tight">
+                Diagrama Unifilar
               </span>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase">
-                NBR 5410 • NBR 5444
+              <span className="inline-flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase">
+                NBR 5410
               </span>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+              <span className="inline-flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
                 {config.supplyType.toUpperCase()} ({config.voltageSystem.replace('_', '/') + 'V'})
               </span>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/40">
+              <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/40">
                 Aterramento: {config.groundingSystem || 'TN-S'}
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">
+            <p className="hidden sm:block text-[11px] text-slate-400 mt-0.5">
               Esquema unifilar completo com alimentador, disjuntor geral, DPS, IDR, barramentos, simbologia NBR 5444 e carimbo técnico.
             </p>
           </div>
         </div>
 
         {/* View Options & Export Actions */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
           {/* Theme switcher */}
           <div className="flex items-center bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs">
             <button
               onClick={() => setTheme('white')}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded transition ${
+              className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded transition text-xs ${
                 theme === 'white'
                   ? 'bg-slate-800 text-amber-400 font-bold'
                   : 'text-slate-400 hover:text-slate-200'
@@ -231,11 +240,11 @@ export const SingleLineDiagramView: React.FC<SingleLineDiagramViewProps> = ({ co
               title="Prancha Técnica com fundo branco (Padrão ABNT / Impressão)"
             >
               <Sun className="w-3.5 h-3.5" />
-              Prancha Branca
+              <span className="hidden xs:inline">Branca</span>
             </button>
             <button
               onClick={() => setTheme('blueprint')}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded transition ${
+              className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded transition text-xs ${
                 theme === 'blueprint'
                   ? 'bg-slate-800 text-sky-400 font-bold'
                   : 'text-slate-400 hover:text-slate-200'
@@ -243,12 +252,12 @@ export const SingleLineDiagramView: React.FC<SingleLineDiagramViewProps> = ({ co
               title="Modo CAD Blueprint (Fundo escuro para visualização em tela)"
             >
               <Moon className="w-3.5 h-3.5" />
-              Blueprint CAD
+              <span className="hidden xs:inline">Blueprint</span>
             </button>
           </div>
 
           {/* Zoom controls */}
-          <div className="flex items-center bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs text-slate-300">
+          <div className="flex items-center bg-slate-950 p-0.5 sm:p-1 rounded-lg border border-slate-800 text-xs text-slate-300">
             <button
               onClick={handleZoomOut}
               className="p-1 hover:text-white hover:bg-slate-800 rounded transition"
@@ -258,7 +267,7 @@ export const SingleLineDiagramView: React.FC<SingleLineDiagramViewProps> = ({ co
             </button>
             <button
               onClick={handleResetZoom}
-              className="px-2 py-0.5 font-mono text-[11px] hover:text-white rounded transition"
+              className="px-1.5 sm:px-2 py-0.5 font-mono text-[11px] hover:text-white rounded transition"
               title="Resetar Zoom (100%)"
             >
               {Math.round(zoom * 100)}%
@@ -270,12 +279,20 @@ export const SingleLineDiagramView: React.FC<SingleLineDiagramViewProps> = ({ co
             >
               <ZoomIn className="w-3.5 h-3.5" />
             </button>
+            <button
+              onClick={handleFitToScreen}
+              className="flex items-center gap-1 px-1.5 py-0.5 hover:text-amber-400 hover:bg-slate-800 rounded transition text-[11px] font-medium border-l border-slate-800 ml-0.5"
+              title="Ajustar diagrama à largura da tela (Auto-fit)"
+            >
+              <Maximize2 className="w-3 h-3 text-amber-400" />
+              <span className="hidden sm:inline">Ajustar</span>
+            </button>
           </div>
 
-          {/* Toggle elements */}
+          {/* Toggle reserves */}
           <button
             onClick={() => setShowReserves((v) => !v)}
-            className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition ${
+            className={`px-2 sm:px-2.5 py-1.5 rounded-lg border text-xs font-medium transition ${
               showReserves
                 ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
                 : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
@@ -288,7 +305,7 @@ export const SingleLineDiagramView: React.FC<SingleLineDiagramViewProps> = ({ co
           {/* Direct Print */}
           <button
             onClick={() => window.print()}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition"
+            className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition"
             title="Imprimir prancha pelo navegador"
           >
             <Printer className="w-3.5 h-3.5" />
@@ -299,22 +316,22 @@ export const SingleLineDiagramView: React.FC<SingleLineDiagramViewProps> = ({ co
           <button
             onClick={handleExportSvg}
             disabled={isExporting}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition shadow-sm disabled:opacity-50"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition shadow-sm disabled:opacity-50"
             title="Baixar arquivo vetorial SVG (AutoCAD / Inkscape / Ilustrator)"
           >
             <Download className="w-3.5 h-3.5" />
-            Exportar SVG
+            <span className="hidden xs:inline">SVG</span>
           </button>
 
           {/* Download PDF */}
           <button
             onClick={handleExportPdf}
             disabled={isExporting}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition shadow-md disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition shadow-md disabled:opacity-50"
             title="Baixar documento PDF vetorial em folha A3 Paisagem com carimbo técnico"
           >
             <FileDown className="w-3.5 h-3.5" />
-            Exportar PDF
+            <span>PDF</span>
           </button>
         </div>
       </div>
@@ -330,7 +347,7 @@ export const SingleLineDiagramView: React.FC<SingleLineDiagramViewProps> = ({ co
       {/* Diagram Canvas Container with Pan & Zoom */}
       <div
         ref={containerRef}
-        className="flex-1 overflow-auto p-6 flex justify-center items-start bg-slate-950 select-none print:p-0 print:bg-white print:overflow-visible"
+        className="flex-1 overflow-auto touch-pan-x touch-pan-y scroll-smooth p-2 sm:p-6 flex justify-start sm:justify-center items-start bg-slate-950 select-none print:p-0 print:bg-white print:overflow-visible"
       >
         <div
           style={{

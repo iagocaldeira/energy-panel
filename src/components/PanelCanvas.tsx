@@ -1,7 +1,16 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Maximize2,
+  Power,
+  Trash2,
+  X,
+} from 'lucide-react';
 import {
   PanelConfig,
   PanelModule,
+  PhaseAssignment,
   PortCoordinate,
   RailId,
   WireConnection,
@@ -19,6 +28,7 @@ interface PanelCanvasProps {
   onToggleModulePower: (id: string) => void;
   onMoveModule: (moduleId: string, targetRail: RailId, targetSlot: number) => void;
   onDropCatalogItem: (catalogKey: string, targetRail: RailId, targetSlot: number) => void;
+  onDeleteModule?: (id: string) => void;
   wireToolActive: boolean;
   activeWireType: WireType;
   activeWireGauge: number;
@@ -30,6 +40,74 @@ interface PanelCanvasProps {
 const DIN_PITCH = 42; // 1 DIN pole width (px)
 const MODULE_HEIGHT = 116; // Height of vertical DIN module (px)
 
+// Accessible descriptive ARIA label for screen readers
+export function getModuleAriaLabel(m: PanelModule): string {
+  const parts: string[] = [];
+  if (m.circuitNumber) {
+    parts.push(`Circuito ${m.circuitNumber}`);
+  }
+  parts.push(m.name);
+  parts.push(`${m.poles}P`);
+  if (m.category === 'dps') {
+    parts.push(`DPS Classe II ${m.dpsKa || 20}kA`);
+  } else if (m.category === 'idr') {
+    parts.push(`IDR ${m.ratingAmps}A ${m.sensitivityMa || 30}mA`);
+  } else if ((m.category as any) === 'rcbo') {
+    parts.push(`DDR ${m.curve || 'C'}${m.ratingAmps}A ${m.sensitivityMa || 30}mA`);
+  } else {
+    parts.push(`${m.curve || 'C'}${m.ratingAmps}A`);
+  }
+  if (m.phases) {
+    parts.push(`(Fase ${m.phases})`);
+  }
+  parts.push(m.isOn ? 'Ligado' : 'Desligado');
+  return parts.join(' - ');
+}
+
+export interface ModuleKeyboardCallbacks {
+  onMoveModule: (moduleId: string, targetRail: RailId, targetSlot: number) => void;
+  onToggleModulePower: (id: string) => void;
+  onDeleteModule?: (id: string) => void;
+  onSelectModule: (id: string | null) => void;
+}
+
+// Pure keyboard navigation & control dispatcher
+export function handleModuleKeyboardNavigation(
+  key: string,
+  m: PanelModule,
+  callbacks: ModuleKeyboardCallbacks
+): boolean {
+  if (key === 'ArrowLeft') {
+    callbacks.onMoveModule(m.id, m.railId, Math.max(0, m.position - 1));
+    return true;
+  }
+  if (key === 'ArrowRight') {
+    callbacks.onMoveModule(m.id, m.railId, m.position + 1);
+    return true;
+  }
+  if (key === 'ArrowUp') {
+    callbacks.onMoveModule(m.id, m.railId, Math.max(0, m.position - 1));
+    return true;
+  }
+  if (key === 'ArrowDown') {
+    callbacks.onMoveModule(m.id, m.railId, m.position + 1);
+    return true;
+  }
+  if (key === ' ' || key === 'Enter') {
+    callbacks.onToggleModulePower(m.id);
+    return true;
+  }
+  if (key === 'Delete' || key === 'Backspace') {
+    callbacks.onDeleteModule?.(m.id);
+    return true;
+  }
+  if (key === 'Escape') {
+    callbacks.onSelectModule(null);
+    return true;
+  }
+  return false;
+}
+
 export const PanelCanvas: React.FC<PanelCanvasProps> = ({
   config,
   selectedModuleId,
@@ -37,13 +115,53 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
   onToggleModulePower,
   onMoveModule,
   onDropCatalogItem,
+  onDeleteModule,
   wireToolActive,
   activeWireType,
   onAddWire,
   onDeleteWire,
   svgRef,
 }) => {
-  const [zoom, setZoom] = useState<number>(1);
+  const canvasWidth =
+    config.topology === 'horizontal'
+      ? Math.max(1000, 200 + config.modulesPerRow * DIN_PITCH + 200)
+      : 1000;
+  const canvasHeight =
+    config.topology === 'fishbone'
+      ? Math.max(940, 380 + config.fishboneSlotsPerSide * DIN_PITCH + 120)
+      : Math.max(960, 200 + config.horizontalRows * 250 + 100);
+
+  const handleFitToScreen = () => {
+    if (typeof window === 'undefined') return;
+    const padding = 32;
+    const idealZoom = Math.min(1.2, Math.max(0.25, (window.innerWidth - padding) / canvasWidth));
+    setZoom(Number(idealZoom.toFixed(2)));
+  };
+
+  const [zoom, setZoom] = useState<number>(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      const padding = 32;
+      return Number(Math.min(1.2, Math.max(0.25, (window.innerWidth - padding) / canvasWidth)).toFixed(2));
+    }
+    return 1;
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      handleFitToScreen();
+    }
+  }, [canvasWidth]);
+
+  const selectedModule = selectedModuleId
+    ? config.modules.find((m) => m.id === selectedModuleId) || null
+    : null;
+
+  const handleNudgeModule = (delta: number) => {
+    if (!selectedModule) return;
+    const newPos = Math.max(0, selectedModule.position + delta);
+    onMoveModule(selectedModule.id, selectedModule.railId, newPos);
+  };
+
   const [hoveredSlot, setHoveredSlot] = useState<{
     railId: RailId;
     slot: number;
@@ -63,15 +181,6 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
 
   const [wireStartPort, setWireStartPort] = useState<PortCoordinate | null>(null);
   const [hoveredWireId, setHoveredWireId] = useState<string | null>(null);
-
-  const canvasWidth =
-    config.topology === 'horizontal'
-      ? Math.max(1000, 200 + config.modulesPerRow * DIN_PITCH + 200)
-      : 1000;
-  const canvasHeight =
-    config.topology === 'fishbone'
-      ? Math.max(940, 380 + config.fishboneSlotsPerSide * DIN_PITCH + 120)
-      : Math.max(960, 200 + config.horizontalRows * 250 + 100);
 
   const clientToSvgCoords = (clientX: number, clientY: number) => {
     const svg = svgRef.current;
@@ -723,6 +832,142 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
     (window as any).__draggedCatalogPoles = 1;
   };
 
+  // Render Daltonism Accessible High-Contrast Phase Badge with Visual Pattern Accents
+  const renderPhasePillBadge = (
+    phase: PhaseAssignment | undefined,
+    x: number,
+    y: number,
+    options?: {
+      key?: React.Key;
+      height?: number;
+      showLabelText?: boolean;
+      customLabel?: string;
+      compact?: boolean;
+    }
+  ) => {
+    if (!phase) return null;
+    const h = options?.height || 14;
+    const showText = options?.showLabelText !== false;
+    const label = options?.customLabel || phase;
+
+    const constituentPhases: ('R' | 'S' | 'T' | 'N' | 'PE')[] = [];
+    if (phase === 'RST') constituentPhases.push('R', 'S', 'T');
+    else if (phase === 'RS') constituentPhases.push('R', 'S');
+    else if (phase === 'RT') constituentPhases.push('R', 'T');
+    else if (phase === 'ST') constituentPhases.push('S', 'T');
+    else if (phase === 'R') constituentPhases.push('R');
+    else if (phase === 'S') constituentPhases.push('S');
+    else if (phase === 'T') constituentPhases.push('T');
+    else if (phase === 'N') constituentPhases.push('N');
+    else if (phase === 'PE') constituentPhases.push('PE');
+    else constituentPhases.push('R');
+
+    const swatchW = options?.compact ? 4 : h >= 14 ? 6 : 5;
+    const swatchGap = 1.5;
+    const swatchesTotalW =
+      constituentPhases.length * swatchW + (constituentPhases.length - 1) * swatchGap;
+    const charW = options?.compact ? 4.5 : h >= 14 ? 6 : 5;
+    const textW = showText ? label.length * charW + 2 : 0;
+    const totalW = Math.max(
+      options?.compact ? 16 : 22,
+      5 + swatchesTotalW + (showText ? 3 + textW : 2)
+    );
+
+    const getPhaseMeta = (p: 'R' | 'S' | 'T' | 'N' | 'PE') => {
+      switch (p) {
+        case 'R':
+          return { color: '#dc2626', pattern: 'url(#hatch-phase-r)', border: '#f87171' };
+        case 'S':
+          return { color: '#ca8a04', pattern: 'url(#dots-phase-s)', border: '#facc15' };
+        case 'T':
+          return { color: '#475569', pattern: 'url(#stripes-phase-t)', border: '#94a3b8' };
+        case 'N':
+          return { color: '#0284c7', pattern: 'url(#grid-phase-n)', border: '#38bdf8' };
+        case 'PE':
+          return { color: '#16a34a', pattern: 'url(#hatch-phase-r)', border: '#4ade80' };
+      }
+    };
+
+    const primaryMeta = getPhaseMeta(constituentPhases[0]);
+
+    return (
+      <g
+        key={options?.key}
+        transform={`translate(${x}, ${y})`}
+        className="pointer-events-none select-none"
+      >
+        <title>{`Fase ${label} (Acessibilidade Daltonismo: ${constituentPhases.map(p => p === 'R' ? 'R: diagonal' : p === 'S' ? 'S: pontilhado' : p === 'T' ? 'T: horizontal' : p).join(', ')})`}</title>
+        {/* High-contrast dark pill container */}
+        <rect
+          x={0}
+          y={0}
+          width={totalW}
+          height={h}
+          rx={h / 2}
+          fill="#090d16"
+          stroke={constituentPhases.length === 1 ? primaryMeta.border : '#64748b'}
+          strokeWidth={1.2}
+        />
+
+        {/* Tactile Daltonism Pattern Swatches */}
+        {constituentPhases.map((p, idx) => {
+          const meta = getPhaseMeta(p);
+          const sx = 3.5 + idx * (swatchW + swatchGap);
+          const sy = 2;
+          const sh = h - 4;
+          return (
+            <g key={idx}>
+              <rect
+                x={sx}
+                y={sy}
+                width={swatchW}
+                height={sh}
+                rx={1}
+                fill={meta.color}
+              />
+              <rect
+                x={sx}
+                y={sy}
+                width={swatchW}
+                height={sh}
+                rx={1}
+                fill={meta.pattern}
+              />
+            </g>
+          );
+        })}
+
+        {/* High-contrast bold typography */}
+        {showText && (
+          <text
+            x={3.5 + swatchesTotalW + 3}
+            y={h / 2 + (h >= 14 ? 3.2 : 2.8)}
+            fontSize={options?.compact ? 6 : h >= 14 ? 7.5 : 6.5}
+            fontWeight="bold"
+            fontFamily="monospace, sans-serif"
+            fill="#ffffff"
+          >
+            {label}
+          </text>
+        )}
+      </g>
+    );
+  };
+
+  // Keyboard navigation & control handler for installed modules
+  const handleModuleKeyDown = (e: React.KeyboardEvent, m: PanelModule) => {
+    const handled = handleModuleKeyboardNavigation(e.key, m, {
+      onMoveModule,
+      onToggleModulePower,
+      onDeleteModule,
+      onSelectModule,
+    });
+    if (handled) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  };
+
   // Render Incoming Utility Supply Header Box (Entrada de Energia)
   const renderSupplyEntryBox = () => {
     const mainBreaker = config.modules.find((m) => m.category === 'main_breaker');
@@ -758,19 +1003,14 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
         >
           ENTRADA GERAL
         </text>
-        {['R', 'S', 'T'].slice(0, numSupplyPhases).map((ph, idx) => (
-          <text
-            key={ph}
-            x={boxX + idx * DIN_PITCH + DIN_PITCH / 2}
-            y={boxY + 21.5}
-            textAnchor="middle"
-            fontSize={8}
-            fontWeight="bold"
-            fill={ph === 'R' ? '#f87171' : ph === 'S' ? '#facc15' : '#f8fafc'}
-          >
-            {ph}
-          </text>
-        ))}
+        {['R', 'S', 'T'].slice(0, numSupplyPhases).map((ph, idx) =>
+          renderPhasePillBadge(
+            ph as PhaseAssignment,
+            boxX + idx * DIN_PITCH + DIN_PITCH / 2 - 11,
+            boxY + 13,
+            { key: ph, height: 11 }
+          )
+        )}
         <text
           x={boxX + numSupplyPhases * DIN_PITCH + 12}
           y={boxY + 21.5}
@@ -839,21 +1079,39 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
         transform={`translate(${x}, ${y})`}
         opacity={isBeingDragged ? 0.45 : 1}
         onPointerDown={(e) => handleModulePointerDown(e, m)}
-        onClick={(e) => e.stopPropagation()}
-        className="cursor-grab active:cursor-grabbing select-none"
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelectModule(m.id);
+        }}
+        onFocus={() => onSelectModule(m.id)}
+        onKeyDown={(e) => handleModuleKeyDown(e, m)}
+        tabIndex={0}
+        role="button"
+        aria-label={getModuleAriaLabel(m)}
+        className="cursor-grab active:cursor-grabbing select-none outline-none focus:outline-none focus-visible:outline-none group/module"
       >
-        {(isSelected || isOverloaded) && (
-          <rect
-            x={-3}
-            y={-3}
-            width={w + 6}
-            height={h + 6}
-            rx={6}
-            fill="none"
-            stroke={isOverloaded ? '#ef4444' : '#f59e0b'}
-            strokeWidth={3}
-          />
-        )}
+        {/* Module Selection, Focus & Overload Outline Ring */}
+        <rect
+          x={-3.5}
+          y={-3.5}
+          width={w + 7}
+          height={h + 7}
+          rx={6}
+          fill="none"
+          stroke={
+            isOverloaded
+              ? '#ef4444'
+              : isSelected
+              ? '#f59e0b'
+              : '#f59e0b'
+          }
+          strokeWidth={isSelected || isOverloaded ? 3 : 2.5}
+          className={`pointer-events-none transition-all duration-150 ${
+            isSelected || isOverloaded
+              ? 'opacity-100'
+              : 'opacity-0 group-focus/module:opacity-100 group-focus-visible/module:opacity-100 group-focus/module:stroke-amber-400 group-focus-visible/module:stroke-amber-400'
+          }`}
+        />
 
         {/* Module Main Casing (Single unified red casing for all DPS modules) */}
         <rect
@@ -958,18 +1216,16 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
               stroke="#0f172a"
               strokeWidth={0.8}
             />
+            {renderPhasePillBadge(m.phases || 'R', w / 2 - 11, 51, { height: 11 })}
             <text
               x={w / 2}
-              y={58}
+              y={69}
               textAnchor="middle"
-              fontSize={7.5}
+              fontSize={6.5}
               fontWeight="bold"
               fill="#334155"
             >
-              {m.dpsVoltage || 275}V
-            </text>
-            <text x={w / 2} y={66} textAnchor="middle" fontSize={7} fill="#64748b">
-              {m.dpsKa || 20}kA
+              {m.dpsVoltage || 275}V • {m.dpsKa || 20}kA
             </text>
 
             <rect x={5} y={75} width={w - 10} height={17} rx={2.5} fill="#0f172a" />
@@ -990,22 +1246,40 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
               x={6}
               y={23}
               width={w - 12}
-              height={20}
+              height={22}
               rx={2.5}
               fill="#f1f5f9"
               stroke="#cbd5e1"
               strokeWidth={1}
             />
-            <text
-              x={w / 2}
-              y={36}
-              textAnchor="middle"
-              fontSize={9}
-              fontWeight="bold"
-              fill="#0f172a"
-            >
-              IDR {m.ratingAmps}A • {m.sensitivityMa || 30}mA
-            </text>
+            {w >= 90 ? (
+              <g>
+                <text
+                  x={12}
+                  y={37}
+                  fontSize={8.5}
+                  fontWeight="bold"
+                  fill="#0f172a"
+                >
+                  IDR {m.ratingAmps}A • {m.sensitivityMa || 30}mA
+                </text>
+                {renderPhasePillBadge(m.phases || 'RST', w - (m.phases === 'RST' ? 44 : 32), 27, { height: 13 })}
+              </g>
+            ) : (
+              <g>
+                <text
+                  x={w / 2}
+                  y={32}
+                  textAnchor="middle"
+                  fontSize={7.5}
+                  fontWeight="bold"
+                  fill="#0f172a"
+                >
+                  IDR {m.ratingAmps}A
+                </text>
+                {renderPhasePillBadge(m.phases || 'RST', w / 2 - 11, 33, { height: 10 })}
+              </g>
+            )}
 
             <rect
               x={w - 30}
@@ -1079,22 +1353,40 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
               x={4}
               y={22}
               width={w - 8}
-              height={20}
+              height={22}
               rx={2.5}
               fill="#f0fdf4"
               stroke="#86efac"
               strokeWidth={0.9}
             />
-            <text
-              x={w / 2}
-              y={35}
-              textAnchor="middle"
-              fontSize={m.poles === 1 ? 7 : 8}
-              fontWeight="bold"
-              fill="#14532d"
-            >
-              DDR {m.curve || 'C'}{m.ratingAmps} • {m.sensitivityMa || 30}mA
-            </text>
+            {m.poles === 1 ? (
+              <>
+                <text
+                  x={w / 2}
+                  y={30.5}
+                  textAnchor="middle"
+                  fontSize={6.8}
+                  fontWeight="bold"
+                  fill="#14532d"
+                >
+                  DDR {m.curve || 'C'}{m.ratingAmps}
+                </text>
+                {renderPhasePillBadge(m.phases, w / 2 - 11, 32, { height: 10 })}
+              </>
+            ) : (
+              <g>
+                <text
+                  x={10}
+                  y={36}
+                  fontSize={8}
+                  fontWeight="bold"
+                  fill="#14532d"
+                >
+                  DDR {m.curve || 'C'}{m.ratingAmps} • {m.sensitivityMa || 30}mA
+                </text>
+                {renderPhasePillBadge(m.phases, w - (m.phases === 'RST' ? 44 : 32), 26, { height: 13 })}
+              </g>
+            )}
 
             <g
               onPointerDown={(e) => e.stopPropagation()}
@@ -1232,23 +1524,40 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
               x={4}
               y={22}
               width={w - 8}
-              height={20}
+              height={22}
               rx={2.5}
               fill="#f1f5f9"
               stroke="#cbd5e1"
               strokeWidth={0.9}
             />
-            <text
-              x={w / 2}
-              y={35}
-              textAnchor="middle"
-              fontSize={8.5}
-              fontWeight="bold"
-              fill="#0f172a"
-            >
-              {m.curve || 'C'}
-              {m.ratingAmps} • {m.phases}
-            </text>
+            {m.poles === 1 ? (
+              <>
+                <text
+                  x={w / 2}
+                  y={31}
+                  textAnchor="middle"
+                  fontSize={7.5}
+                  fontWeight="bold"
+                  fill="#0f172a"
+                >
+                  {m.curve || 'C'}{m.ratingAmps}A
+                </text>
+                {renderPhasePillBadge(m.phases, w / 2 - 11, 32.5, { height: 10 })}
+              </>
+            ) : (
+              <g>
+                <text
+                  x={12}
+                  y={36}
+                  fontSize={8.5}
+                  fontWeight="bold"
+                  fill="#0f172a"
+                >
+                  {m.curve || 'C'}{m.ratingAmps}A
+                </text>
+                {renderPhasePillBadge(m.phases, w - (m.phases === 'RST' ? 44 : 32), 26, { height: 13 })}
+              </g>
+            )}
 
             <g
               onPointerDown={(e) => e.stopPropagation()}
@@ -1364,21 +1673,39 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
         transform={`translate(${x}, ${y})`}
         opacity={isBeingDragged ? 0.45 : 1}
         onPointerDown={(e) => handleModulePointerDown(e, m)}
-        onClick={(e) => e.stopPropagation()}
-        className="cursor-grab active:cursor-grabbing select-none"
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelectModule(m.id);
+        }}
+        onFocus={() => onSelectModule(m.id)}
+        onKeyDown={(e) => handleModuleKeyDown(e, m)}
+        tabIndex={0}
+        role="button"
+        aria-label={getModuleAriaLabel(m)}
+        className="cursor-grab active:cursor-grabbing select-none outline-none focus:outline-none focus-visible:outline-none group/module"
       >
-        {(isSelected || isOverloaded) && (
-          <rect
-            x={-3}
-            y={-3}
-            width={w + 6}
-            height={h + 6}
-            rx={6}
-            fill="none"
-            stroke={isOverloaded ? '#ef4444' : '#f59e0b'}
-            strokeWidth={3}
-          />
-        )}
+        {/* Module Selection, Focus & Overload Outline Ring */}
+        <rect
+          x={-3.5}
+          y={-3.5}
+          width={w + 7}
+          height={h + 7}
+          rx={6}
+          fill="none"
+          stroke={
+            isOverloaded
+              ? '#ef4444'
+              : isSelected
+              ? '#f59e0b'
+              : '#f59e0b'
+          }
+          strokeWidth={isSelected || isOverloaded ? 3 : 2.5}
+          className={`pointer-events-none transition-all duration-150 ${
+            isSelected || isOverloaded
+              ? 'opacity-100'
+              : 'opacity-0 group-focus/module:opacity-100 group-focus-visible/module:opacity-100 group-focus/module:stroke-amber-400 group-focus-visible/module:stroke-amber-400'
+          }`}
+        />
 
         <rect
           x={0}
@@ -1512,30 +1839,53 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
           stroke={isRcbo ? '#86efac' : '#cbd5e1'}
           strokeWidth={1}
         />
-        <text
-          x={side === 'left' ? 46.5 : 69.5}
-          y={h / 2 - 2}
-          textAnchor="middle"
-          fontSize={8.5}
-          fontWeight="bold"
-          fill={isRcbo ? '#14532d' : '#0f172a'}
-        >
-          {isRcbo ? 'DDR ' : ''}
-          {m.curve || 'C'}
-          {m.ratingAmps}A
-        </text>
-        <text
-          x={side === 'left' ? 46.5 : 69.5}
-          y={h / 2 + 9}
-          textAnchor="middle"
-          fontSize={7}
-          fontWeight="bold"
-          fill={isRcbo ? '#15803d' : '#475569'}
-        >
-          {isRcbo ? `${m.sensitivityMa || 30}mA • ${m.phases}` : `Fase ${m.phases}`}
-        </text>
+        {h <= 50 ? (
+          <>
+            <text
+              x={side === 'left' ? 46.5 : 69.5}
+              y={h / 2 - 3}
+              textAnchor="middle"
+              fontSize={7.5}
+              fontWeight="bold"
+              fill={isRcbo ? '#14532d' : '#0f172a'}
+            >
+              {isRcbo ? 'DDR ' : ''}
+              {m.curve || 'C'}
+              {m.ratingAmps}A
+            </text>
+            {renderPhasePillBadge(m.phases, side === 'left' ? 35 : 58, 22, { height: 10 })}
+          </>
+        ) : (
+          <>
+            <text
+              x={side === 'left' ? 46.5 : 69.5}
+              y={h / 2 - 6}
+              textAnchor="middle"
+              fontSize={8.5}
+              fontWeight="bold"
+              fill={isRcbo ? '#14532d' : '#0f172a'}
+            >
+              {isRcbo ? 'DDR ' : ''}
+              {m.curve || 'C'}
+              {m.ratingAmps}A
+            </text>
+            {renderPhasePillBadge(m.phases, side === 'left' ? 33 : 56, h / 2 + 2, { height: 12 })}
+            {isRcbo && (
+              <text
+                x={side === 'left' ? 46.5 : 69.5}
+                y={h / 2 + 19}
+                textAnchor="middle"
+                fontSize={6.5}
+                fontWeight="bold"
+                fill="#15803d"
+              >
+                {m.sensitivityMa || 30}mA
+              </text>
+            )}
+          </>
+        )}
 
-        {/* External High-Contrast Circuit Name Plaque */}
+        {/* External High-Contrast Circuit Name Plaque with Phase Badge */}
         <g
           transform={
             side === 'left'
@@ -1553,16 +1903,17 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
             stroke={isRcbo ? '#15803d' : '#334155'}
             strokeWidth={1}
           />
+          {renderPhasePillBadge(m.phases, 4, 2, { height: 12, compact: true })}
           <text
-            x={67}
-            y={11}
-            textAnchor="middle"
-            fontSize={8}
+            x={32}
+            y={11.5}
+            textAnchor="start"
+            fontSize={7.5}
             fontWeight="bold"
             fill={isRcbo ? '#4ade80' : '#f8fafc'}
           >
             <title>{`C${m.circuitNumber || '?'} • ${m.name}${isRcbo ? ' (DDR ' + (m.sensitivityMa || 30) + 'mA)' : ''}`}</title>
-            C{m.circuitNumber || '?'} • {isRcbo ? 'DDR • ' : ''}{m.name.length > 14 ? m.name.slice(0, 13) + '…' : m.name}
+            C{m.circuitNumber || '?'} • {isRcbo ? 'DDR ' : ''}{m.name.length > 13 ? m.name.slice(0, 12) + '…' : m.name}
           </text>
         </g>
       </g>
@@ -1572,64 +1923,96 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
   return (
     <div className="relative flex flex-col h-full w-full bg-slate-900 overflow-hidden select-none">
       {/* Top Canvas Controls Bar */}
-      <div className="flex items-center justify-between px-4 py-2 bg-slate-900/95 border-b border-slate-800 text-xs z-10">
-        <div className="flex items-center gap-2.5">
-          <span className="font-semibold text-slate-200">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-2 bg-slate-900/95 border-b border-slate-800 text-xs z-10">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-semibold text-slate-200 whitespace-nowrap text-xs">
             {config.topology === 'fishbone'
               ? 'Espinha de Peixe'
               : 'DIN Horizontal'}
           </span>
-          <span className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 font-mono">
-            {config.supplyType === 'tri'
-              ? 'Trifásico'
-              : config.supplyType === 'bi'
-              ? 'Bifásico'
-              : 'Monofásico'}{' '}
-            • {config.voltageSystem === '127_220' ? '127V / 220V' : '220V / 380V'}
+          <span className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 font-mono whitespace-nowrap text-[11px] sm:text-xs">
+            <span className="hidden sm:inline">
+              {config.supplyType === 'tri'
+                ? 'Trifásico'
+                : config.supplyType === 'bi'
+                ? 'Bifásico'
+                : 'Monofásico'}{' '}
+              • {config.voltageSystem === '127_220' ? '127V / 220V' : '220V / 380V'}
+            </span>
+            <span className="inline sm:hidden">
+              {config.supplyType === 'tri'
+                ? '3F'
+                : config.supplyType === 'bi'
+                ? '2F'
+                : '1F'}{' '}
+              • {config.voltageSystem === '127_220' ? '127/220V' : '220/380V'}
+            </span>
           </span>
           {wireToolActive ? (
-            <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse font-medium">
-              {wireStartPort
-                ? `Conectando de "${wireStartPort.label}" → Clique no borne de destino (ou clique em um fio para removê-lo)`
-                : 'Modo Fio Manual: Clique em qualquer borne para iniciar ou clique sobre um fio existente para apagá-lo'}
+            <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse font-medium text-[11px] sm:text-xs">
+              <span className="hidden sm:inline">
+                {wireStartPort
+                  ? `Conectando de "${wireStartPort.label}" → Clique no borne de destino`
+                  : 'Modo Fiação Manual: Clique em um borne para conectar ou em um fio para remover'}
+              </span>
+              <span className="inline sm:hidden">
+                {wireStartPort ? 'Conectando...' : 'Fio Manual Ativo'}
+              </span>
             </span>
           ) : (
-            <span className="text-slate-400 hidden md:inline">
+            <span className="text-slate-400 hidden lg:inline">
               Arraste qualquer componente com o mouse para mudar de posição
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 ml-auto">
           <button
-            onClick={() => setZoom((z) => Math.max(0.65, +(z - 0.1).toFixed(2)))}
-            className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300"
+            type="button"
+            onClick={() => setZoom((z) => Math.max(0.25, +(z - 0.1).toFixed(2)))}
+            className="w-9 h-9 flex items-center justify-center rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 text-base font-semibold transition"
             title="Diminuir Zoom"
+            aria-label="Diminuir Zoom"
           >
             −
           </button>
-          <span className="font-mono text-slate-400 w-12 text-center">
+          <span className="font-mono text-slate-300 min-w-[38px] text-center text-xs">
             {Math.round(zoom * 100)}%
           </span>
           <button
+            type="button"
             onClick={() => setZoom((z) => Math.min(1.5, +(z + 0.1).toFixed(2)))}
-            className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300"
+            className="w-9 h-9 flex items-center justify-center rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 text-base font-semibold transition"
             title="Aumentar Zoom"
+            aria-label="Aumentar Zoom"
           >
             +
           </button>
           <button
+            type="button"
             onClick={() => setZoom(1)}
-            className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300"
+            className="h-9 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 text-xs font-medium transition hidden sm:inline-flex items-center"
+            title="Restaurar zoom para 100%"
           >
             100%
+          </button>
+          <button
+            type="button"
+            onClick={handleFitToScreen}
+            className="h-9 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-amber-300 border border-amber-500/30 flex items-center gap-1.5 text-xs font-medium transition"
+            title="Ajustar à Tela (Fit to Screen)"
+            aria-label="Ajustar à Tela"
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Ajustar</span>
           </button>
         </div>
       </div>
 
       {/* Scrollable SVG Viewport */}
       <div
-        className="flex-1 overflow-auto flex justify-center items-start p-6 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:20px_20px]"
+        className="flex-1 overflow-auto flex justify-center items-start p-3 sm:p-6 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:20px_20px] touch-pan-x touch-pan-y"
+        style={{ touchAction: 'pan-x pan-y' }}
         onClick={() => {
           if (dragJustEndedRef.current) return;
           onSelectModule(null);
@@ -1643,10 +2026,12 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
           viewBox={`0 0 ${canvasWidth} ${canvasHeight}`}
           onPointerMove={handleSvgPointerMove}
           onPointerUp={handleSvgPointerUp}
+          onPointerCancel={handleSvgPointerUp}
           onDragOver={handleSvgDragOver}
           onDragLeave={() => setHoveredSlot(null)}
           onDrop={handleSvgDrop}
-          className="shadow-2xl rounded-xl border border-slate-700/80 bg-slate-950 transition-all duration-150"
+          style={{ touchAction: 'pan-x pan-y' }}
+          className="shadow-2xl rounded-xl border border-slate-700/80 bg-slate-950 transition-all duration-150 touch-pan-x touch-pan-y"
         >
           <defs>
             <linearGradient id="dinRailGrad" x1="0" y1="0" x2="0" y2="1">
@@ -1676,6 +2061,121 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
               <stop offset="50%" stopColor="#fde047" />
               <stop offset="100%" stopColor="#a16207" />
             </linearGradient>
+
+            {/* ============================================================== */}
+            {/* DALTONISM ACCESSIBLE PATTERNS (COLORBLIND VISUAL SAFE)         */}
+            {/* ============================================================== */}
+
+            {/* Phase R: Diagonal Stripes /// (45 degrees) */}
+            <pattern
+              id="pattern-phase-r"
+              width="8"
+              height="8"
+              patternUnits="userSpaceOnUse"
+              patternTransform="rotate(45)"
+            >
+              <rect width="8" height="8" fill="#ef4444" />
+              <line x1="0" y1="0" x2="0" y2="8" stroke="#ffffff" strokeWidth="2.4" strokeOpacity="0.9" />
+            </pattern>
+            <pattern
+              id="pattern-phase-r-overlay"
+              width="6"
+              height="6"
+              patternUnits="userSpaceOnUse"
+              patternTransform="rotate(45)"
+            >
+              <line x1="0" y1="0" x2="0" y2="6" stroke="#ffffff" strokeWidth="2" strokeOpacity="0.65" />
+            </pattern>
+            <pattern
+              id="hatch-phase-r"
+              width="6"
+              height="6"
+              patternUnits="userSpaceOnUse"
+              patternTransform="rotate(45)"
+            >
+              <line x1="0" y1="0" x2="0" y2="6" stroke="#ffffff" strokeWidth="1.8" strokeOpacity="0.95" />
+            </pattern>
+
+            {/* Phase S: Crosshatch / Polka Dots ::: */}
+            <pattern
+              id="pattern-phase-s"
+              width="8"
+              height="8"
+              patternUnits="userSpaceOnUse"
+            >
+              <rect width="8" height="8" fill="#eab308" />
+              <circle cx="4" cy="4" r="2.2" fill="#0f172a" stroke="#ffffff" strokeWidth="0.8" />
+            </pattern>
+            <pattern
+              id="pattern-phase-s-overlay"
+              width="7"
+              height="7"
+              patternUnits="userSpaceOnUse"
+            >
+              <circle cx="3.5" cy="3.5" r="1.8" fill="#ffffff" fillOpacity="0.75" />
+            </pattern>
+            <pattern
+              id="dots-phase-s"
+              width="5"
+              height="5"
+              patternUnits="userSpaceOnUse"
+            >
+              <circle cx="2.5" cy="2.5" r="1.4" fill="#ffffff" fillOpacity="0.95" />
+            </pattern>
+
+            {/* Phase T: Horizontal Stripes === */}
+            <pattern
+              id="pattern-phase-t"
+              width="8"
+              height="8"
+              patternUnits="userSpaceOnUse"
+            >
+              <rect width="8" height="8" fill="#475569" />
+              <line x1="0" y1="4" x2="8" y2="4" stroke="#ffffff" strokeWidth="2.4" strokeOpacity="0.9" />
+            </pattern>
+            <pattern
+              id="pattern-phase-t-overlay"
+              width="6"
+              height="6"
+              patternUnits="userSpaceOnUse"
+            >
+              <line x1="0" y1="3" x2="6" y2="3" stroke="#ffffff" strokeWidth="2" strokeOpacity="0.65" />
+            </pattern>
+            <pattern
+              id="stripes-phase-t"
+              width="5"
+              height="5"
+              patternUnits="userSpaceOnUse"
+            >
+              <line x1="0" y1="2.5" x2="5" y2="2.5" stroke="#ffffff" strokeWidth="1.8" strokeOpacity="0.95" />
+            </pattern>
+
+            {/* Neutral (N): Fine Grid Crosshatch +++ */}
+            <pattern
+              id="pattern-phase-n"
+              width="8"
+              height="8"
+              patternUnits="userSpaceOnUse"
+            >
+              <rect width="8" height="8" fill="#0284c7" />
+              <path d="M 4 0 L 4 8 M 0 4 L 8 4" stroke="#ffffff" strokeWidth="1.5" strokeOpacity="0.85" />
+            </pattern>
+            <pattern
+              id="pattern-phase-n-overlay"
+              width="6"
+              height="6"
+              patternUnits="userSpaceOnUse"
+            >
+              <path d="M 3 0 L 3 6 M 0 3 L 6 3" stroke="#ffffff" strokeWidth="1.2" strokeOpacity="0.65" />
+            </pattern>
+            <pattern
+              id="grid-phase-n"
+              width="6"
+              height="6"
+              patternUnits="userSpaceOnUse"
+            >
+              <path d="M 3 0 L 3 6 M 0 3 L 6 3" stroke="#ffffff" strokeWidth="1.2" strokeOpacity="0.95" />
+            </pattern>
           </defs>
 
           {/* Outer QDC Enclosure Box */}
@@ -1904,15 +2404,22 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
                       )
                     )}
 
-                    {/* Horizontal Copper Fingers */}
+                    {/* Horizontal Copper Fingers with Daltonism Patterns & Badges */}
                     {Array.from({ length: config.fishboneSlotsPerSide }).map((_, sIdx) => {
                       const fingerY = verticalStartY + sIdx * DIN_PITCH + DIN_PITCH / 2 - 5;
                       const barIdx = sIdx % numBars;
                       const sourceBarX = busStartX + barIdx * barSpacing;
-                      const phaseLetter = phasesList[barIdx];
+                      const phaseLetter = phasesList[barIdx] as PhaseAssignment;
+                      const phasePatternId =
+                        phaseLetter === 'R'
+                          ? 'pattern-phase-r-overlay'
+                          : phaseLetter === 'S'
+                          ? 'pattern-phase-s-overlay'
+                          : 'pattern-phase-t-overlay';
 
                       return (
                         <g key={sIdx}>
+                          {/* Main Copper Finger */}
                           <rect
                             x={374}
                             y={fingerY}
@@ -1923,6 +2430,28 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
                             stroke="#78350f"
                             strokeWidth={0.9}
                           />
+
+                          {/* Daltonism Tactile Pattern Overlay on Finger Arms */}
+                          <rect
+                            x={376}
+                            y={fingerY + 1}
+                            width={38}
+                            height={8}
+                            rx={1.5}
+                            fill={`url(#${phasePatternId})`}
+                            opacity={0.85}
+                          />
+                          <rect
+                            x={586}
+                            y={fingerY + 1}
+                            width={38}
+                            height={8}
+                            rx={1.5}
+                            fill={`url(#${phasePatternId})`}
+                            opacity={0.85}
+                          />
+
+                          {/* Busbar Tap Screw */}
                           <circle
                             cx={sourceBarX}
                             cy={fingerY + 5}
@@ -1931,24 +2460,10 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
                             stroke="#713f12"
                             strokeWidth={1.2}
                           />
-                          <text
-                            x={425}
-                            y={fingerY + 8}
-                            fontSize={7.5}
-                            fontWeight="bold"
-                            fill="#78350f"
-                          >
-                            {phaseLetter}
-                          </text>
-                          <text
-                            x={568}
-                            y={fingerY + 8}
-                            fontSize={7.5}
-                            fontWeight="bold"
-                            fill="#78350f"
-                          >
-                            {phaseLetter}
-                          </text>
+
+                          {/* High-Contrast Accessible Phase Pill Badges */}
+                          {renderPhasePillBadge(phaseLetter, 416, fingerY - 2, { height: 14 })}
+                          {renderPhasePillBadge(phaseLetter, 558, fingerY - 2, { height: 14 })}
                         </g>
                       );
                     })}
@@ -1956,7 +2471,14 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
                     {/* Vertical Main Copper Bars (R, S, T) */}
                     {Array.from({ length: numBars }).map((_, bIdx) => {
                       const bx = busStartX + bIdx * barSpacing - 7;
-                      const phaseLabel = phasesList[bIdx];
+                      const phaseLabel = phasesList[bIdx] as PhaseAssignment;
+                      const phasePatternId =
+                        phaseLabel === 'R'
+                          ? 'pattern-phase-r-overlay'
+                          : phaseLabel === 'S'
+                          ? 'pattern-phase-s-overlay'
+                          : 'pattern-phase-t-overlay';
+
                       return (
                         <g key={bIdx}>
                           <rect
@@ -1980,12 +2502,34 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
                             stroke="#78350f"
                             strokeWidth={1.2}
                           />
+                          {/* Tactile Pattern on Vertical Copper Bar */}
+                          <rect
+                            x={bx + 1}
+                            y={324}
+                            width={12}
+                            height={totalHeight + 42}
+                            rx={1.5}
+                            fill={`url(#${phasePatternId})`}
+                            opacity={0.35}
+                          />
+                          {/* High-Contrast Header Badge */}
+                          <rect
+                            x={bx - 2}
+                            y={330}
+                            width={18}
+                            height={15}
+                            rx={3}
+                            fill="#090d16"
+                            stroke={phaseLabel === 'R' ? '#f87171' : phaseLabel === 'S' ? '#facc15' : '#94a3b8'}
+                            strokeWidth={1.2}
+                          />
                           <text
                             x={bx + 7}
-                            y={340}
+                            y={341}
                             textAnchor="middle"
-                            fontSize={9}
+                            fontSize={8.5}
                             fontWeight="bold"
+                            fontFamily="monospace, sans-serif"
                             fill="#ffffff"
                           >
                             {phaseLabel}
@@ -2541,6 +3085,13 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
                     }}
                     className="cursor-crosshair"
                   >
+                    {/* Enlarged invisible hitbox (r=18) for touch and mobile precision */}
+                    <circle
+                      cx={port.x}
+                      cy={port.y}
+                      r={18}
+                      fill="transparent"
+                    />
                     <circle
                       cx={port.x}
                       cy={port.y}
@@ -2552,6 +3103,7 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
                       }
                       stroke="#0f172a"
                       strokeWidth={1.8}
+                      className="pointer-events-none"
                     >
                       <title>{port.label}</title>
                     </circle>
@@ -2562,6 +3114,89 @@ export const PanelCanvas: React.FC<PanelCanvasProps> = ({
           )}
         </svg>
       </div>
+
+      {/* Floating Quick Action Bar for Mobile when a module is selected */}
+      {selectedModule && (
+        <div
+          className="fixed bottom-20 left-1/2 -translate-x-1/2 z-30 md:hidden flex items-center gap-1.5 p-2 px-3 bg-slate-900/95 border border-slate-700/80 rounded-2xl shadow-2xl backdrop-blur max-w-[95vw] text-xs"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Module Information */}
+          <div className="flex flex-col pr-1.5 border-r border-slate-700/60 max-w-[100px] shrink-0">
+            <span className="font-bold text-slate-200 truncate">
+              {selectedModule.circuitNumber ? `C${selectedModule.circuitNumber}` : selectedModule.name}
+            </span>
+            <span className="text-[10px] text-slate-400 truncate">
+              {selectedModule.ratingAmps ? `${selectedModule.ratingAmps}A` : `${selectedModule.poles}P`} • {selectedModule.phases || '1P'}
+            </span>
+          </div>
+
+          {/* Ligar/Desligar disjuntor (com indicador de status Ligado/Desligado) */}
+          <button
+            type="button"
+            onClick={() => onToggleModulePower(selectedModule.id)}
+            className={`h-9 px-2.5 rounded-xl flex items-center gap-1.5 font-bold text-xs transition active:scale-95 shrink-0 ${
+              selectedModule.isOn
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+            }`}
+            title={selectedModule.isOn ? 'Desligar disjuntor' : 'Ligar disjuntor'}
+            aria-label={selectedModule.isOn ? 'Desligar disjuntor' : 'Ligar disjuntor'}
+          >
+            <Power className="w-3.5 h-3.5" />
+            <span>{selectedModule.isOn ? 'LIGADO' : 'DESLIGADO'}</span>
+          </button>
+
+          {/* Mover para esquerda (nudge -1) */}
+          <button
+            type="button"
+            onClick={() => handleNudgeModule(-1)}
+            className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 flex items-center justify-center shrink-0 border border-slate-700 active:scale-95"
+            title="Mover para esquerda"
+            aria-label="Mover para esquerda"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+
+          {/* Mover para direita (nudge +1) */}
+          <button
+            type="button"
+            onClick={() => handleNudgeModule(1)}
+            className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 flex items-center justify-center shrink-0 border border-slate-700 active:scale-95"
+            title="Mover para direita"
+            aria-label="Mover para direita"
+          >
+            <ArrowRight className="w-4 h-4" />
+          </button>
+
+          {/* Excluir módulo (se onDeleteModule estiver presente) */}
+          {onDeleteModule && (
+            <button
+              type="button"
+              onClick={() => {
+                onDeleteModule(selectedModule.id);
+                onSelectModule(null);
+              }}
+              className="w-9 h-9 rounded-xl bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 flex items-center justify-center shrink-0 border border-rose-500/30 active:scale-95"
+              title="Excluir módulo"
+              aria-label="Excluir módulo"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+
+          {/* Desmarcar seleção */}
+          <button
+            type="button"
+            onClick={() => onSelectModule(null)}
+            className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-400 hover:text-slate-200 flex items-center justify-center shrink-0 border border-slate-700 active:scale-95"
+            title="Desmarcar seleção"
+            aria-label="Desmarcar seleção"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 };
